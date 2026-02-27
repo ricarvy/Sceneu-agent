@@ -20,6 +20,25 @@ REALISM_ENHANCERS = [
     "自然握持", "真实互动", "使用状态", "展示状态", "享受体验",
 ]
 
+# 背景融合关键词库（减少剥离感）
+BACKGROUND_FUSION = [
+    "人物与背景自然融合，边缘过渡自然，无生硬边界",
+    "背景虚化自然渐进，景深过渡柔和，人物与背景光线一致",
+    "人物阴影投射在背景上，增强立体感和融合感",
+    "人物轮廓与背景自然融合，边缘羽毛化处理，避免剪贴感",
+    "人物与背景色彩呼应，色调统一，避免色温不协调",
+    "人物反光与环境光呼应，增强真实感",
+]
+
+# 人脸一致性关键词库（高度一致）
+FACE_CONSISTENCY = [
+    "严格保持人脸特征，与原图人脸高度一致，可轻微美颜但必须能看出是同一个人",
+    "保持原照片的发型、五官位置、脸型轮廓、眼睛特征、鼻子特征、嘴巴特征",
+    "人脸变形程度极小，仅允许轻微的角度调整，禁止大幅度改变人脸结构",
+    "保持原照片的表情风格，仅调整表情细节（如微笑幅度），禁止改变表情基调",
+    "保持原照片的肤色特征，仅允许轻微提亮或调色，禁止改变肤色本质",
+]
+
 # 场景关键词库（多样化场景）
 SCENE_STYLES = [
     "温馨咖啡馆午后场景", "办公室工位一角", "客厅沙发休息区", 
@@ -207,7 +226,7 @@ USE_ENVIRONMENTS = [
 
 def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
     """
-    为4张图片分别增强提示词，确保多样性、真实体验、表情丰富、光影真实、高级感强、人脸一致
+    为4张图片分别增强提示词，确保多样性、真实体验、表情丰富、光影真实、高级感强、人脸高度一致、背景自然融合
     
     Args:
         prompt: 原始提示词
@@ -238,10 +257,13 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
     # 选择使用环境（多样性）
     environment = random.choice(USE_ENVIRONMENTS)
     
-    # 选择真实感增强（2-3个）
-    selected_realism = random.sample(REALISM_ENHANCERS, random.randint(2, 3))
+    # 选择背景融合（2-3个）
+    selected_fusion = random.sample(BACKGROUND_FUSION, random.randint(2, 3))
     
-    # 构建完整描述 - 突出使用体验、真实光影、高级感和多样性
+    # 选择真实感增强（1-2个）
+    selected_realism = random.sample(REALISM_ENHANCERS, random.randint(1, 2))
+    
+    # 构建完整描述 - 突出使用体验、真实光影、高级感、人脸一致性和背景融合
     enhanced_prompt_parts = [
         f"{scene}，{environment}",
         f"{scene_config['description']}，{scene_config['shot_type']}，{scene_config['angle']}，{scene_config['unique_marker']}",
@@ -249,6 +271,7 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
         f"{lighting['description']}，{lighting['unique_marker']}",
         f"{composition['description']}，{composition['unique_marker']}",
         f"{color['description']}，{color['unique_marker']}",
+        f"{' '.join(selected_fusion)}",
         f"{' '.join(selected_realism)}",
     ]
     
@@ -265,8 +288,8 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
         enhanced_prompt += f"，{prompt.strip()}"
     
     # 确保提示词不超过长度限制
-    if len(enhanced_prompt) > 800:
-        enhanced_prompt = enhanced_prompt[:800]
+    if len(enhanced_prompt) > 1000:
+        enhanced_prompt = enhanced_prompt[:1000]
     
     return enhanced_prompt
 
@@ -274,12 +297,12 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
 @tool
 def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url: str, runtime: ToolRuntime=None) -> str:
     """
-    一次性生成4张多样化场景、不同角度、人脸一致的社交媒体营销图片
-    突出用户使用商品的体验，表情丰富，场景多样，人脸保持一致
+    一次性生成4张多样化场景、不同角度、人脸高度一致、背景自然融合的社交媒体营销图片
+    突出用户使用商品的体验，表情丰富，场景多样，人脸保持高度一致，背景与人物自然融合
     
     Args:
         prompt: 图片生成提示词，描述想要的风格和效果
-        user_photo_url: 用户照片的URL（作为人脸参考）
+        user_photo_url: 用户照片的URL（作为人脸参考，必须高度一致）
         product_photo_url: 商品照片的URL
         runtime: 工具运行时上下文
     
@@ -293,24 +316,25 @@ def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url
     # 随机选择一个基础场景
     scene = random.choice(SCENE_STYLES)
     
-    # 为4张图片分别生成提示词（多样性优先 + 人脸一致性）
+    # 为4张图片分别生成提示词（多样性优先 + 人脸高度一致 + 背景自然融合）
     image_urls = []
     
+    # 选择人脸一致性强化词（随机2个）
+    selected_face_consistency = random.sample(FACE_CONSISTENCY, 2)
+    face_consistency_prompt = "，".join(selected_face_consistency)
+    
     for i in range(4):
-        # 增强提示词 - 每张图片都有不同的体验和表情，但人脸保持一致
+        # 增强提示词 - 每张图片都有不同的体验和表情，但人脸保持高度一致，背景自然融合
         enhanced_prompt = enhance_prompt_for_realism(prompt, i, scene)
         
-        # 添加人脸一致性保障
-        face_consistency_prompt = "保持人脸特征一致，相同的发型、五官特征、面部轮廓，相同的脸部识别特征"
-        
-        # 合并完整提示词
+        # 合并完整提示词（包含人脸一致性和背景融合）
         full_prompt = f"{enhanced_prompt}，{face_consistency_prompt}"
         
         try:
-            # 生成单张图片，始终使用用户照片作为人脸参考
+            # 生成单张图片，始终使用用户照片作为人脸参考（确保高度一致）
             response = client.generate(
                 prompt=full_prompt,
-                image=[user_photo_url, product_photo_url],  # 用户照片作为第一张参考，确保人脸一致
+                image=[user_photo_url, product_photo_url],  # 用户照片作为第一张参考，确保人脸高度一致
                 size="2K",
                 watermark=False,
                 response_format="url"
