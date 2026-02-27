@@ -2,6 +2,7 @@
 图片生成工具
 支持图生图功能，将用户照片与商品照片合成为营销图片
 支持一次性生成4张同一场景下不同角度的图片
+突出用户使用商品的体验和多样性
 """
 import random
 from langchain.tools import tool, ToolRuntime
@@ -16,59 +17,101 @@ REALISM_ENHANCERS = [
     "生活化", "自然过渡", "真实细节", "生活气息", "像摄影师拍摄",
     # 人物互动相关
     "人物正在使用商品", "手部自然接触", "眼神自然交流", "表情与使用场景协调",
-    "自然握持", "真实互动", "使用状态", "展示状态",
+    "自然握持", "真实互动", "使用状态", "展示状态", "享受体验",
 ]
 
-# 场景关键词库（统一场景）
+# 场景关键词库（多样化场景）
 SCENE_STYLES = [
     "温馨咖啡馆午后场景", "办公室工位一角", "客厅沙发休息区", 
     "阳台阳光区", "卧室床头", "餐厅餐桌旁",
+    "户外公园长椅", "书店阅读区", "地铁站通勤中",
 ]
 
-# 4张图片的拍摄角度（固定分配）
-FOUR_SHOT_ANGLES = [
+# 4张图片的使用场景和角度配置（多样性优先）
+FOUR_SHOT_SCENES = [
     {
-        "name": "45度侧拍中景",
-        "description": "45度侧拍中景构图，展示整体场景和人物商品关系",
-        "focus": "整体互动"
+        "name": "整体使用场景",
+        "shot_type": "中景/全身",
+        "distance": "中距离",
+        "angle": "45度侧拍",
+        "description": "中景全身构图，展示人物完整使用商品的场景，展现整体体验感",
+        "focus": "整体使用体验"
     },
     {
-        "name": "特写镜头",
-        "description": "特写镜头聚焦商品，突出商品细节，人物手部自然接触商品",
-        "focus": "商品细节"
+        "name": "细节互动",
+        "shot_type": "近景/半身",
+        "distance": "近距离",
+        "angle": "特写",
+        "description": "近景半身构图，聚焦人物与商品的互动细节，突出商品质感和手部动作",
+        "focus": "互动细节"
     },
     {
-        "name": "俯拍视角",
-        "description": "俯拍视角展现人物与商品的互动，不同视角的展示效果",
-        "focus": "互动视角"
+        "name": "远景氛围",
+        "shot_type": "远景/全身",
+        "distance": "远距离",
+        "angle": "远景",
+        "description": "远景全身构图，展现人物在环境中使用商品的整体氛围，适合有文字/logo的商品",
+        "focus": "氛围场景"
     },
     {
         "name": "第一视角",
-        "description": "第一视角手持商品，强代入感，仿佛用户自己使用",
-        "focus": "代入体验"
+        "shot_type": "中近景",
+        "distance": "中近距离",
+        "angle": "第一视角",
+        "description": "第一视角手持商品，强代入感，展现真实使用体验",
+        "focus": "体验代入"
     },
 ]
 
-# 光线质感关键词库（统一光线）
-LIGHTING_STYLES = [
-    "自然窗边散射光，统一光线方案",
-    "柔和室内环境光，真实阴影",
-    "温暖午后自然光，真实反光",
-    "适度环境光，自然色温",
+# 表情多样性库（突出用户体验）
+EXPRESSIONS = [
+    "微笑满足的表情，享受使用商品",
+    "专注认真的表情，沉浸在体验中",
+    "惊喜愉悦的表情，发现商品的美好",
+    "放松自然的表情，舒适的体验感",
+    "自信优雅的表情，展现使用场景",
+    "开心愉悦的表情，满意的效果",
 ]
 
-# 人物互动关键词库
-INTERACTION_STYLES = [
-    "人物正在使用商品，手部自然握持",
-    "人物手持商品展示，眼神看向商品",
-    "人物手指轻触商品，动作自然",
-    "人物专注于商品，表情自然放松",
+# 使用动作多样性库
+ACTION_STYLES = [
+    "正在使用商品，动作流畅自然",
+    "手持商品展示，姿态优雅",
+    "调整商品细节，动作专注",
+    "享受商品功能，表情满足",
+    "与商品互动，手势自然",
+    "体验商品效果，状态放松",
+]
+
+# 光线质感关键词库（统一光线但多样效果）
+LIGHTING_STYLES = [
+    "自然窗边散射光，真实柔和",
+    "室内环境光，温暖舒适",
+    "午后阳光，氛围感强",
+    "柔和灯光，专业质感",
+]
+
+# 文字/Logo处理策略
+TEXT_HANDLING = {
+    "use_distant_shot": "远景构图，避免文字/logo细节问题",
+    "slightly_blur": "适度虚化，保持整体视觉效果",
+    "focus_on_experience": "聚焦人物体验，文字作为背景元素",
+}
+
+# 场景多样性（不同使用环境）
+USE_ENVIRONMENTS = [
+    "在家中使用，舒适温馨",
+    "在办公室使用，专业高效",
+    "在咖啡馆使用，休闲惬意",
+    "在户外使用，阳光活力",
+    "在通勤路上使用，便捷实用",
+    "在休息区使用，放松自在",
 ]
 
 
 def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
     """
-    为4张图片分别增强提示词，确保同一场景、不同角度、真实互动
+    为4张图片分别增强提示词，确保多样性、真实体验、表情丰富
     
     Args:
         prompt: 原始提示词
@@ -78,24 +121,39 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
     Returns:
         增强后的提示词
     """
-    # 选择该图片的拍摄角度配置
-    angle_config = FOUR_SHOT_ANGLES[index]
+    # 选择该图片的场景配置（多样性优先）
+    scene_config = FOUR_SHOT_SCENES[index]
     
     # 选择光线风格
     lighting = LIGHTING_STYLES[index % len(LIGHTING_STYLES)]
     
-    # 选择互动风格
-    interaction = INTERACTION_STYLES[index % len(INTERACTION_STYLES)]
+    # 选择表情（多样性）
+    expression = random.choice(EXPRESSIONS)
     
-    # 选择真实感增强（2个）
-    selected_realism = random.sample(REALISM_ENHANCERS, 2)
+    # 选择动作（多样性）
+    action = random.choice(ACTION_STYLES)
     
-    # 构建完整描述
-    enhanced_prompt = (
-        f"{scene}，{angle_config['description']}，{lighting}，"
-        f"{interaction}，{' '.join(selected_realism)}，"
-        f"保留真实细节，不过度美化，像真实拍摄的营销照片"
-    )
+    # 选择使用环境（多样性）
+    environment = random.choice(USE_ENVIRONMENTS)
+    
+    # 选择真实感增强（2-3个）
+    selected_realism = random.sample(REALISM_ENHANCERS, random.randint(2, 3))
+    
+    # 构建完整描述 - 突出使用体验和多样性
+    enhanced_prompt_parts = [
+        f"{scene}，{environment}",
+        f"{scene_config['description']}，{scene_config['shot_type']}，{scene_config['angle']}",
+        f"{expression}，{action}",
+        f"{lighting}，{' '.join(selected_realism)}",
+    ]
+    
+    # 添加文字处理策略（如果涉及远景）
+    if scene_config['distance'] == "远距离":
+        text_handling = TEXT_HANDLING["use_distant_shot"]
+        enhanced_prompt_parts.append(text_handling)
+    
+    # 合并提示词
+    enhanced_prompt = "，".join(enhanced_prompt_parts)
     
     # 添加用户原始提示词（如果有的话）
     if prompt and prompt.strip():
@@ -111,7 +169,8 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
 @tool
 def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url: str, runtime: ToolRuntime=None) -> str:
     """
-    一次性生成4张同一场景下不同角度的社交媒体营销图片
+    一次性生成4张多样化场景、不同角度的社交媒体营销图片
+    突出用户使用商品的体验，表情丰富，场景多样
     
     Args:
         prompt: 图片生成提示词，描述想要的风格和效果
@@ -126,14 +185,14 @@ def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url
     
     client = ImageGenerationClient(ctx=ctx)
     
-    # 随机选择一个统一场景
+    # 随机选择一个基础场景
     scene = random.choice(SCENE_STYLES)
     
-    # 为4张图片分别生成提示词
+    # 为4张图片分别生成提示词（多样性优先）
     image_urls = []
     
     for i in range(4):
-        # 增强提示词
+        # 增强提示词 - 每张图片都有不同的体验和表情
         enhanced_prompt = enhance_prompt_for_realism(prompt, i, scene)
         
         try:
