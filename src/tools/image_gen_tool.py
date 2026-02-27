@@ -83,12 +83,28 @@ ACTION_STYLES = [
     "体验商品效果，状态放松",
 ]
 
-# 光线质感关键词库（统一光线但多样效果）
+# 光线质感关键词库（真实光影 + 高级感）
 LIGHTING_STYLES = [
-    "自然窗边散射光，真实柔和",
-    "室内环境光，温暖舒适",
-    "午后阳光，氛围感强",
-    "柔和灯光，专业质感",
+    "自然窗边侧光，真实柔和，阴影过渡自然，保留高光细节，侧光勾勒人物轮廓",
+    "室内环境散射光，色温真实，真实阴影，皮肤质感自然，光线分布均匀",
+    "午后黄金时刻光，逆光光晕，真实反光，氛围温暖，光线有层次感",
+    "柔和顶光，专业布光，真实阴影渐变，高光不过曝，暗部有细节",
+]
+
+# 高级感构图关键词库
+COMPOSITION_STYLES = [
+    "三分法构图，黄金分割，视觉引导自然，画面平衡感强",
+    "专业摄影师构图，留白适当，视觉焦点清晰，层次分明",
+    "电影感构图，景深适度，背景虚化自然，主体突出",
+    "生活化构图，自然不刻板，画面流动感，生活气息浓",
+]
+
+# 高级感色彩关键词库
+COLOR_STYLES = [
+    "暖色调，色温自然，色彩过渡柔和，色调统一",
+    "莫兰迪色系，色彩低饱和度，质感高级，不艳俗",
+    "自然色，真实还原，肤色自然，商品色彩准确",
+    "电影调色，色彩有层次，对比适中，氛围感强",
 ]
 
 # 文字/Logo处理策略
@@ -111,7 +127,7 @@ USE_ENVIRONMENTS = [
 
 def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
     """
-    为4张图片分别增强提示词，确保多样性、真实体验、表情丰富
+    为4张图片分别增强提示词，确保多样性、真实体验、表情丰富、光影真实、高级感强
     
     Args:
         prompt: 原始提示词
@@ -124,8 +140,14 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
     # 选择该图片的场景配置（多样性优先）
     scene_config = FOUR_SHOT_SCENES[index]
     
-    # 选择光线风格
+    # 选择光线风格（真实光影）
     lighting = LIGHTING_STYLES[index % len(LIGHTING_STYLES)]
+    
+    # 选择构图风格（高级感）
+    composition = COMPOSITION_STYLES[index % len(COMPOSITION_STYLES)]
+    
+    # 选择色彩风格（高级感）
+    color = COLOR_STYLES[index % len(COLOR_STYLES)]
     
     # 选择表情（多样性）
     expression = random.choice(EXPRESSIONS)
@@ -139,12 +161,12 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
     # 选择真实感增强（2-3个）
     selected_realism = random.sample(REALISM_ENHANCERS, random.randint(2, 3))
     
-    # 构建完整描述 - 突出使用体验和多样性
+    # 构建完整描述 - 突出使用体验、真实光影和高级感
     enhanced_prompt_parts = [
         f"{scene}，{environment}",
         f"{scene_config['description']}，{scene_config['shot_type']}，{scene_config['angle']}",
         f"{expression}，{action}",
-        f"{lighting}，{' '.join(selected_realism)}",
+        f"{lighting}，{composition}，{color}，{' '.join(selected_realism)}",
     ]
     
     # 添加文字处理策略（如果涉及远景）
@@ -160,8 +182,8 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
         enhanced_prompt += f"，{prompt.strip()}"
     
     # 确保提示词不超过长度限制
-    if len(enhanced_prompt) > 500:
-        enhanced_prompt = enhanced_prompt[:500]
+    if len(enhanced_prompt) > 600:
+        enhanced_prompt = enhanced_prompt[:600]
     
     return enhanced_prompt
 
