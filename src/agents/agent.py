@@ -53,10 +53,13 @@ def build_agent(ctx=None):
         default_headers=default_headers(ctx) if ctx else {}
     )
     
+    # 创建工具列表
+    tools_list = [generate_marketing_image]
+    
     return create_agent(
         model=llm,
         system_prompt=cfg.get("sp"),
-        tools=[generate_marketing_image],
+        tools=tools_list,
         checkpointer=get_memory_saver(),
         state_schema=AgentState,
     )

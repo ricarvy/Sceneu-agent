@@ -109,7 +109,7 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
 
 
 @tool
-def generate_marketing_image_batch(prompt: str, user_photo_url: str, product_photo_url: str, runtime: ToolRuntime=None) -> str:
+def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url: str, runtime: ToolRuntime=None) -> str:
     """
     一次性生成4张同一场景下不同角度的社交媒体营销图片
     
@@ -122,7 +122,7 @@ def generate_marketing_image_batch(prompt: str, user_photo_url: str, product_pho
     Returns:
         生成的4张图片URL，用换行符分隔
     """
-    ctx = new_context(method="generate_marketing_image_batch")
+    ctx = new_context(method="generate_marketing_image")
     
     client = ImageGenerationClient(ctx=ctx)
     
@@ -156,22 +156,3 @@ def generate_marketing_image_batch(prompt: str, user_photo_url: str, product_pho
     
     # 返回4张图片的URL（用换行符分隔）
     return "\n".join(image_urls)
-
-
-# 保留原函数名以保持兼容性
-@tool
-def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url: str, runtime: ToolRuntime=None) -> str:
-    """
-    生成社交媒体营销图片（兼容版本，调用批量生成）
-    
-    Args:
-        prompt: 图片生成提示词，描述想要的风格和效果
-        user_photo_url: 用户照片的URL
-        product_photo_url: 商品照片的URL
-        runtime: 工具运行时上下文
-    
-    Returns:
-        生成的4张图片URL，用换行符分隔
-    """
-    # 调用批量生成函数
-    return generate_marketing_image_batch(prompt, user_photo_url, product_photo_url, runtime)
