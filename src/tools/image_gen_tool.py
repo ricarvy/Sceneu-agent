@@ -86,51 +86,91 @@ FOUR_SHOT_SCENES = [
     },
 ]
 
-# 表情多样性库（突出用户体验 + 明确区分）
+# 表情多样性库（突出用户体验 + 高度一致 + 明显区分）
 EXPRESSIONS = [
     {
         "expression": "微笑满足",
-        "description": "微笑着使用商品，眼神温柔，嘴角上扬，表情满足愉悦，享受使用过程",
+        "description": "温柔的微笑，嘴角上扬约15度，眼神柔和温暖，眉毛自然舒展，脸颊有轻微的微笑肌显现，表情满足愉悦，享受使用商品的美好体验",
         "unique_marker": "smiling_satisfied"
     },
     {
         "expression": "专注认真",
-        "description": "专注地看着商品或使用商品，眼神集中，表情认真，沉浸在使用体验中",
+        "description": "眼神专注地注视商品，眼睛微微睁大，眉毛微微聚拢，嘴唇紧闭成思考状，表情认真严肃，沉浸在体验商品的功能和细节中",
         "unique_marker": "focused_serious"
     },
     {
         "expression": "惊喜愉悦",
-        "description": "眼神发光，表情惊喜，嘴角带笑，发现商品功能或效果的愉悦感",
+        "description": "眼睛睁大，眼神发光，眉毛挑高，嘴巴张开约30度露出整齐牙齿，表情惊喜兴奋，发现商品意想不到的功能或效果",
         "unique_marker": "surprised_delighted"
     },
     {
         "expression": "放松自然",
-        "description": "表情放松自然，眼神柔和，享受商品带来的舒适体验，姿态舒展",
+        "description": "完全放松的表情，眼睛半睁半闭，眼神柔和懒散，嘴角自然下垂，嘴唇微张，表情松弛舒适，享受商品带来的放松体验",
         "unique_marker": "relaxed_natural"
+    },
+    {
+        "expression": "自信优雅",
+        "description": "自信的微笑，眼神坚定明亮，下巴微微抬起，嘴角上扬约20度，表情优雅大方，展现使用商品时的自信和优雅气质",
+        "unique_marker": "confident_elegant"
+    },
+    {
+        "expression": "开心愉悦",
+        "description": "灿烂的笑容，眼睛弯成月牙状，嘴角上扬约40度露出牙齿，脸颊有明显的笑纹，表情开心快乐，对商品非常满意",
+        "unique_marker": "happy_joyful"
+    },
+    {
+        "expression": "思考探索",
+        "description": "思考的表情，眼神游移探索，眉毛微微皱起，手指轻触下巴，表情好奇探索，正在探索商品的各种可能性",
+        "unique_marker": "thinking_exploring"
+    },
+    {
+        "expression": "满意肯定",
+        "description": "满意的点头表情，眼神肯定赞赏，嘴角上扬约25度，头部微微点头，表情肯定认可，对商品的效果非常满意",
+        "unique_marker": "satisfied_approval"
     },
 ]
 
-# 使用动作多样性库（明确区分）
+# 使用动作多样性库（明确区分 + 丰富多样）
 ACTION_STYLES = [
     {
         "action": "正在使用",
-        "description": "人物正在使用商品的核心功能，动作流畅自然，展示商品的使用方式",
+        "description": "人物正在使用商品的核心功能，双手协调操作商品，动作流畅自然流畅，展示商品的实际使用方式和使用过程",
         "unique_marker": "using_action"
     },
     {
         "action": "手持展示",
-        "description": "人物手持商品展示给镜头，手势优雅，商品在画面中清晰可见",
+        "description": "人物手持商品展示给镜头，一手托举商品，另一手轻触商品细节，手势优雅大方，商品在画面中清晰可见",
         "unique_marker": "holding_display"
     },
     {
         "action": "调整细节",
-        "description": "人物调整商品的细节，手指精细动作，表情专注，展示商品的可调节性",
+        "description": "人物调整商品的细节设置，手指精细操作商品的控制区或调节按钮，表情专注，展示商品的可调节性和个性化功能",
         "unique_marker": "adjusting_action"
     },
     {
         "action": "享受体验",
-        "description": "人物享受商品带来的体验，姿态放松，表情满足，展现商品效果",
+        "description": "人物享受商品带来的体验，身体后仰放松，双手自然放置，姿态舒展舒适，表情满足，展现商品带来的愉悦感受",
         "unique_marker": "enjoying_action"
+    },
+    {
+        "action": "探索发现",
+        "description": "人物好奇地探索商品的各种功能，双手触摸商品的各个部分，眼神游移，表情好奇，发现商品的惊喜功能",
+        "unique_marker": "exploring_action"
+    },
+    {
+        "action": "分享推荐",
+        "description": "人物将商品推荐给镜头，一手举起商品，另一手指向镜头，眼神友好，表情热情，仿佛在分享好物给朋友",
+        "unique_marker": "sharing_action"
+    },
+    {
+        "action": "认真比对",
+        "description": "人物认真比对商品的效果或细节，手持商品仔细观察，眼神专注，表情认真，展示商品的精细做工和品质",
+        "unique_marker": "comparing_action"
+    },
+    {
+        "action": "轻松携带",
+        "description": "人物轻松携带商品，一手轻握商品，另一手自然摆动，步伐轻快，表情轻松，展示商品的便携性和实用性",
+        "unique_marker": "carrying_action"
     },
 ]
 
