@@ -2,9 +2,66 @@
 图片生成工具
 支持图生图功能，将用户照片与商品照片合成为营销图片
 """
+import random
 from langchain.tools import tool, ToolRuntime
 from coze_coding_dev_sdk import ImageGenerationClient
 from coze_coding_utils.runtime_ctx.context import new_context
+
+
+# 真实感增强关键词库
+REALISM_ENHANCERS = [
+    # 质感相关
+    "真实质感", "自然肤色", "适度后期", "保留纹理",
+    "不过度美化", "自然过渡", "真实细节", "生活气息",
+]
+
+# 拍摄角度关键词库
+SHOT_ANGLES = [
+    "45度侧拍构图", "自然俯拍视角", "微微仰拍角度", "侧面轮廓展现",
+    "斜角动态构图", "过肩镜头视角", "第一人称手持", "中景自然构图",
+    "适当俯视突出商品", "立体侧拍", "自然角度", "真实拍摄视角",
+]
+
+# 光线质感关键词库
+LIGHTING_STYLES = [
+    "自然窗边散射光", "温暖午后自然光", "柔和室内环境光", "真实环境光",
+    "适度光影层次", "自然阴影", "不过度曝光", "真实色温",
+]
+
+
+def enhance_prompt_for_realism(prompt: str) -> str:
+    """
+    增强提示词，增加真实感和拍摄角度描述
+    
+    Args:
+        prompt: 原始提示词
+    
+    Returns:
+        增强后的提示词
+    """
+    # 随机选择一些增强关键词
+    selected_realism = random.sample(REALISM_ENHANCERS, 2)
+    selected_angle = random.choice(SHOT_ANGLES)
+    selected_lighting = random.choice(LIGHTING_STYLES)
+    
+    # 构建增强描述
+    enhancement = f" {selected_angle}，{selected_lighting}，" + "，".join(selected_realism)
+    
+    # 检查原始提示词是否已经包含这些关键词，避免重复
+    if not any(keyword in prompt for keyword in REALISM_ENHANCERS):
+        enhanced_prompt = prompt + enhancement
+    else:
+        # 如果已经包含真实感关键词，只添加拍摄角度
+        if not any(keyword in prompt for keyword in SHOT_ANGLES):
+            enhanced_prompt = prompt + f" {selected_angle}"
+        else:
+            enhanced_prompt = prompt
+    
+    # 确保提示词不过长（最多保留前500个字符）
+    if len(enhanced_prompt) > 500:
+        enhanced_prompt = enhanced_prompt[:500]
+    
+    return enhanced_prompt
 
 
 @tool
@@ -25,9 +82,12 @@ def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url
     
     client = ImageGenerationClient(ctx=ctx)
     
+    # 增强提示词，增加真实感和拍摄角度描述
+    enhanced_prompt = enhance_prompt_for_realism(prompt)
+    
     # 使用两张参考图片进行图生图生成
     response = client.generate(
-        prompt=prompt,
+        prompt=enhanced_prompt,
         image=[user_photo_url, product_photo_url],
         size="2K",
         watermark=False,  # 营销图片不需要水印
