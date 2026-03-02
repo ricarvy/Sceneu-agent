@@ -95,35 +95,49 @@ SCENE_STYLES = [
     "户外公园长椅", "书店阅读区", "地铁站通勤中",
 ]
 
-# 4张图片的拍照姿势配置（同一场景下，不同pose）
-FOUR_SHOT_POSES = [
+# 站立姿势的轻微变化配置（同一场景下，站立姿势多样化）
+STANDING_POSES = [
     {
-        "name": "站立展示",
-        "pose_description": "自然站立姿态，身体略侧向镜头约15度，双脚自然分开与肩同宽，一手自然下垂，一手轻触或手持商品，姿态优雅自然",
+        "name": "正面站立",
+        "pose_description": "自然正面站立，身体正对镜头，双脚自然分开与肩同宽，一手自然下垂，一手轻触或手持商品，姿态优雅自然",
         "camera_position": "相机水平，构图舒适",
         "focus": "展示商品的整体效果和个人气质",
-        "unique_marker": "standing_pose"
+        "unique_marker": "standing_front"
     },
     {
-        "name": "坐姿体验",
-        "pose_description": "自然坐姿，身体前倾约20度，双手配合使用商品或放在桌面上，表情专注享受，姿态轻松舒适",
-        "camera_position": "相机略微俯视约10度，构图自然",
-        "focus": "展现商品在实际使用场景中的体验感",
-        "unique_marker": "sitting_pose"
+        "name": "略侧站立",
+        "pose_description": "自然站立，身体略侧向镜头约15度，双脚自然分开，一手轻触商品，一手自然下垂，姿态优雅",
+        "camera_position": "相机水平，构图舒适",
+        "focus": "展示商品效果和个人气质",
+        "unique_marker": "standing_slight_side"
     },
     {
-        "name": "侧身展示",
-        "pose_description": "侧身约45度面向镜头，身体姿态舒展，一手举商品展示，另一手自然摆放在身侧，姿态优雅动感",
-        "camera_position": "相机水平，构图有动感",
-        "focus": "展示商品的侧面细节和个人曲线",
-        "unique_marker": "side_pose"
+        "name": "手持展示",
+        "pose_description": "自然站立，双手持商品展示给镜头，手势优雅，姿态大方",
+        "camera_position": "相机水平，构图舒适",
+        "focus": "展示商品细节",
+        "unique_marker": "standing_holding"
     },
     {
-        "name": "特写互动",
-        "pose_description": "半身构图，双手操作或展示商品细节，身体略前倾，表情专注或愉悦，姿态真实自然",
-        "camera_position": "相机水平，构图紧凑",
-        "focus": "展现商品细节和手部操作的互动感",
-        "unique_marker": "closeup_pose"
+        "name": "动态站立",
+        "pose_description": "自然站立，身体略微前倾约5-10度，一手拿商品，一手摆动，姿态有动感",
+        "camera_position": "相机水平，构图舒适",
+        "focus": "展示商品效果和动态感",
+        "unique_marker": "standing_dynamic"
+    },
+    {
+        "name": "轻松站立",
+        "pose_description": "自然站立，身体放松，一手插兜，一手轻触商品，姿态轻松",
+        "camera_position": "相机水平，构图舒适",
+        "focus": "展示商品效果和轻松感",
+        "unique_marker": "standing_relaxed"
+    },
+    {
+        "name": "优雅站立",
+        "pose_description": "自然站立，身体优雅舒展，一手轻扶商品，一手自然下垂，姿态优雅",
+        "camera_position": "相机水平，构图舒适",
+        "focus": "展示商品效果和优雅气质",
+        "unique_marker": "standing_elegant"
     },
 ]
 
@@ -325,44 +339,43 @@ USE_ENVIRONMENTS = [
 ]
 
 
-def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_count: int = 1, has_custom_scene: bool = False) -> str:
+def enhance_prompt_for_realism(prompt: str, scene: str, product_count: int = 1, has_custom_scene: bool = False) -> str:
     """
-    为4张图片分别增强提示词，确保同一场景下不同pose/表情的多样性、真实体验、降低AI感、人脸高度一致
+    为1张图片增强提示词，确保站立姿势多样化、表情自然、真实体验、降低AI感、人脸高度一致
     
     Args:
         prompt: 原始提示词
-        index: 图片索引（0-3）
-        scene: 统一场景描述
+        scene: 场景描述
         product_count: 商品数量（1个或多个）
         has_custom_scene: 是否有用户自定义场景
     
     Returns:
         增强后的提示词
     """
-    # 选择该图片的拍照姿势（不同pose，同一场景）
-    pose_config = FOUR_SHOT_POSES[index]
+    # 随机选择一个站立姿势（轻微变化）
+    pose_config = random.choice(STANDING_POSES)
     
-    # 选择光线风格（真实光影 + 自然真实）
-    lighting = LIGHTING_STYLES[index % len(LIGHTING_STYLES)]
+    # 随机选择光线风格（真实光影 + 自然真实）
+    lighting = random.choice(LIGHTING_STYLES)
     
-    # 选择构图风格（自然真实）
-    composition = COMPOSITION_STYLES[index % len(COMPOSITION_STYLES)]
+    # 随机选择构图风格（自然真实）
+    composition = random.choice(COMPOSITION_STYLES)
     
-    # 选择色彩风格（自然真实）
-    color = COLOR_STYLES[index % len(COLOR_STYLES)]
+    # 随机选择色彩风格（自然真实）
+    color = random.choice(COLOR_STYLES)
     
-    # 选择表情（多样性 + 自然真实）
-    expression = EXPRESSIONS[index % len(EXPRESSIONS)]
+    # 随机选择表情（自然真实）
+    expression = random.choice(EXPRESSIONS)
     
-    # 选择动作（多样性 + 自然真实 + 支持多商品）
+    # 随机选择动作（多样性 + 自然真实 + 支持多商品）
     if product_count > 1:
         # 多商品时选择支持搭配的动作
         multi_product_actions = [a for a in ACTION_STYLES if a['unique_marker'] in ['matching_natural', 'wearing_natural', 'displaying_natural']]
-        action = multi_product_actions[index % len(multi_product_actions)]
+        action = random.choice(multi_product_actions)
     else:
-        action = ACTION_STYLES[index % len(ACTION_STYLES)]
+        action = random.choice(ACTION_STYLES)
     
-    # 选择使用环境（多样性）
+    # 选择使用环境
     environment = random.choice(USE_ENVIRONMENTS)
     
     # 选择背景融合（2-3个）
@@ -371,7 +384,7 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_coun
     # 选择真实感增强（2-3个，强调降低AI感）
     selected_realism = random.sample(REALISM_ENHANCERS, random.randint(2, 3))
     
-    # 构建完整描述 - 突出pose多样性、表情多样性、真实体验、降低AI感、人脸一致性、背景自然融合
+    # 构建完整描述 - 突出pose多样性、表情自然、真实体验、降低AI感、人脸一致性、背景自然融合
     enhanced_prompt_parts = [
         f"{scene}，{environment}" if not has_custom_scene else f"{scene}",
         f"{pose_config['pose_description']}，{pose_config['camera_position']}",
@@ -409,12 +422,12 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_coun
 @tool
 def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url: str, scene_photo_url: str = "", runtime: ToolRuntime=None) -> str:
     """
-    一次性生成4张同一场景下不同pose和表情的社交媒体营销图片
+    生成1张完整的社交媒体营销图片
     支持单个商品或多个商品组合（多个商品URL用逗号分隔）
-    支持用户上传场景图（如果上传，所有图片都符合用户指定的场景）
-    4张图片保持同一场景（用户指定场景或AI根据服饰搭配自动生成），但在不同拍照姿势和表情下展现
+    支持用户上传场景图（如果上传，图片符合用户指定的场景）
+    图片使用站立姿势，姿势轻微变化，保持自然真实
     人脸保持高度一致和自然真实，降低AI感，避免过度美化
-    突出用户使用商品的体验，表情丰富自然，pose多样自然，光影真实自然，背景与人物自然融合
+    突出用户使用商品的体验，表情自然，pose轻微变化，光影真实自然，背景与人物自然融合
     智能识别商品类型，匹配合适的组合方式和场景
     生成9:16比例图片，强化脸部细节刻画
     
@@ -422,11 +435,11 @@ def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url
         prompt: 图片生成提示词，描述想要的风格和效果
         user_photo_url: 用户照片的URL（作为人脸参考，必须高度一致）
         product_photo_url: 商品照片的URL，支持单个商品或多个商品（多个商品用逗号分隔，例如：url1,url2,url3）
-        scene_photo_url: 场景照片的URL（可选，如果上传，所有图片都符合此场景）
+        scene_photo_url: 场景照片的URL（可选，如果上传，图片符合此场景）
         runtime: 工具运行时上下文
     
     Returns:
-        生成的4张图片URL，用换行符分隔
+        生成的1张图片URL
     """
     ctx = new_context(method="generate_marketing_image")
     
@@ -445,42 +458,37 @@ def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url
     else:
         scene = random.choice(SCENE_STYLES)
     
-    # 为4张图片分别生成提示词（多样性优先 + 人脸高度一致 + 背景自然融合 + 多商品展示 + 脸部细节精细）
-    image_urls = []
+    # 生成提示词（站立姿势轻微变化 + 人脸高度一致 + 背景自然融合 + 多商品展示 + 脸部细节精细）
     
     # 选择人脸一致性强化词（随机3-4个，强化脸部细节）
     selected_face_consistency = random.sample(FACE_CONSISTENCY, random.randint(3, 4))
     face_consistency_prompt = "，".join(selected_face_consistency)
     
-    for i in range(4):
-        # 增强提示词 - 每张图片都有不同的体验和表情，但人脸保持高度一致，背景自然融合，多商品合理展示，脸部细节精细
-        enhanced_prompt = enhance_prompt_for_realism(prompt, i, scene, product_count, has_custom_scene)
-        
-        # 合并完整提示词（包含人脸一致性和背景融合）
-        full_prompt = f"{enhanced_prompt}，{face_consistency_prompt}"
-        
-        try:
-            # 生成单张图片，始终使用用户照片作为人脸参考（确保高度一致）
-            # 如果有自定义场景，将场景图也作为参考图
-            reference_images = [user_photo_url] + product_urls
-            if has_custom_scene:
-                reference_images.append(scene_photo_url)
-            
-            response = client.generate(
-                prompt=full_prompt,
-                image=reference_images,  # 用户照片、所有商品照片、场景图（如果有）作为参考
-                size="1080x1920",  # 9:16比例
-                watermark=False,
-                response_format="url"
-            )
-            
-            if response.success and response.image_urls:
-                image_urls.append(response.image_urls[0])
-            else:
-                error_msg = ", ".join(response.error_messages) if response.error_messages else "Unknown error"
-                image_urls.append(f"第{i+1}张图片生成失败: {error_msg}")
-        except Exception as e:
-            image_urls.append(f"第{i+1}张图片生成异常: {str(e)}")
+    # 增强提示词 - 站立姿势轻微变化，人脸保持高度一致，背景自然融合，多商品合理展示，脸部细节精细
+    enhanced_prompt = enhance_prompt_for_realism(prompt, scene, product_count, has_custom_scene)
     
-    # 返回4张图片的URL（用换行符分隔）
-    return "\n".join(image_urls)
+    # 合并完整提示词（包含人脸一致性和背景融合）
+    full_prompt = f"{enhanced_prompt}，{face_consistency_prompt}"
+    
+    try:
+        # 生成1张图片，始终使用用户照片作为人脸参考（确保高度一致）
+        # 如果有自定义场景，将场景图也作为参考图
+        reference_images = [user_photo_url] + product_urls
+        if has_custom_scene:
+            reference_images.append(scene_photo_url)
+        
+        response = client.generate(
+            prompt=full_prompt,
+            image=reference_images,  # 用户照片、所有商品照片、场景图（如果有）作为参考
+            size="1080x1920",  # 9:16比例
+            watermark=False,
+            response_format="url"
+        )
+        
+        if response.success and response.image_urls:
+            return response.image_urls[0]
+        else:
+            error_msg = ", ".join(response.error_messages) if response.error_messages else "Unknown error"
+            return f"图片生成失败: {error_msg}"
+    except Exception as e:
+        return f"图片生成异常: {str(e)}"

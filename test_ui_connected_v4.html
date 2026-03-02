@@ -503,7 +503,7 @@
                     </div>
                 </div>
 
-                <button id="generateBtn" class="generate-btn" onclick="generateImage()" disabled>✨ 生成营销图片（4张，9:16）</button>
+                <button id="generateBtn" class="generate-btn" onclick="generateImage()" disabled>✨ 生成营销图片（9:16）</button>
             </div>
 
             <!-- 右侧：结果面板 -->
@@ -530,7 +530,7 @@
                 <li><strong>多商品组合：</strong>系统会自动分析每个商品的类型（服装、配饰、鞋类等），智能匹配组合方式和场景</li>
                 <li><strong>图片比例：</strong>生成的图片比例为9:16（1080x1920），适合社交媒体分享</li>
                 <li><strong>脸部细节：</strong>强化脸部细节刻画，确保五官清晰、皮肤质感真实、禁止面部视觉崩塌</li>
-                <li><strong>生成结果：</strong>一次性生成4张不同角度、不同表情、不同场景的营销图片</li>
+                <li><strong>生成结果：</strong>生成1张完整的营销图片，使用站立姿势，姿势轻微变化</li>
                 <li><strong>启动后端：</strong>运行 <code>python api_example.py</code> 启动 API 服务</li>
             </ul>
         </div>
@@ -823,20 +823,28 @@
                     </div>
                 `;
 
+                // 处理图片URL（支持单个URL或数组）
+                const imageUrls = [];
+                if (data.result_url) {
+                    imageUrls.push(data.result_url);
+                } else if (data.image_urls && data.image_urls.length > 0) {
+                    imageUrls.push(...data.image_urls);
+                }
+
                 // 如果有图片URL，显示图片
-                if (data.image_urls && data.image_urls.length > 0) {
+                if (imageUrls.length > 0) {
                     resultHtml += `
                         <div style="margin-bottom: 10px; color: #666; font-size: 0.9em;">
-                            生成了 ${data.image_urls.length} 张图片（9:16比例）
+                            生成了 ${imageUrls.length} 张图片（9:16比例）
                         </div>
                         <div class="result-images">
                     `;
-                    data.image_urls.forEach((url, index) => {
+                    imageUrls.forEach((url, index) => {
                         resultHtml += `
                             <div>
-                                <img src="${url}" class="result-image" alt="生成的营销图片 ${index + 1}" onclick="window.open('${url}', '_blank')">
+                                <img src="${url}" class="result-image" alt="生成的营销图片" onclick="window.open('${url}', '_blank')">
                                 <div style="text-align: center; font-size: 0.85em; color: #666; margin-top: 5px;">
-                                    图片 ${index + 1}
+                                    ${imageUrls.length > 1 ? '图片 ' + (index + 1) : '营销图片'}
                                 </div>
                             </div>
                         `;
@@ -868,7 +876,7 @@
                 `;
             } finally {
                 btn.disabled = false;
-                btn.textContent = '✨ 生成营销图片（4张，9:16）';
+                btn.textContent = '✨ 生成营销图片（9:16）';
             }
         }
     </script>
