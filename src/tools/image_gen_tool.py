@@ -1,8 +1,9 @@
 """
 图片生成工具
-支持图生图功能，将用户照片与商品照片合成为营销图片
+支持图生图功能，将用户照片与商品照片（支持单个或多个商品）合成为营销图片
 支持一次性生成4张同一场景下不同角度的图片
 突出用户使用商品的体验和多样性
+支持智能商品识别和组合匹配
 """
 import random
 from langchain.tools import tool, ToolRuntime
@@ -18,6 +19,8 @@ REALISM_ENHANCERS = [
     # 人物互动相关
     "人物正在使用商品", "手部自然接触", "眼神自然交流", "表情与使用场景协调",
     "自然握持", "真实互动", "使用状态", "展示状态", "享受体验",
+    # 多商品互动相关
+    "多个商品自然搭配", "不显拥挤", "主要商品重点展示", "次要商品辅助展示",
 ]
 
 # 背景融合关键词库（减少剥离感）
@@ -86,7 +89,7 @@ FOUR_SHOT_SCENES = [
     },
 ]
 
-# 表情多样性库（突出用户体验 + 高度一致 + 明显区分）
+# 表情多样性库（突出用户体验 + 高度一致 + 明确区分）
 EXPRESSIONS = [
     {
         "expression": "微笑满足",
@@ -130,7 +133,7 @@ EXPRESSIONS = [
     },
 ]
 
-# 使用动作多样性库（明确区分 + 丰富多样）
+# 使用动作多样性库（明确区分 + 丰富多样 + 支持多商品）
 ACTION_STYLES = [
     {
         "action": "正在使用",
@@ -153,24 +156,24 @@ ACTION_STYLES = [
         "unique_marker": "enjoying_action"
     },
     {
-        "action": "探索发现",
-        "description": "人物好奇地探索商品的各种功能，双手触摸商品的各个部分，眼神游移，表情好奇，发现商品的惊喜功能",
-        "unique_marker": "exploring_action"
+        "action": "穿搭展示",
+        "description": "人物穿着服装类商品，展示穿搭效果，身体姿态自然优雅，突出服装的质感和设计细节",
+        "unique_marker": "outfit_display"
     },
     {
-        "action": "分享推荐",
-        "description": "人物将商品推荐给镜头，一手举起商品，另一手指向镜头，眼神友好，表情热情，仿佛在分享好物给朋友",
-        "unique_marker": "sharing_action"
+        "action": "配饰搭配",
+        "description": "人物佩戴配饰类商品（如挎包、首饰），展示配饰与整体造型的搭配效果，配饰位置自然合适",
+        "unique_marker": "accessory_matching"
     },
     {
-        "action": "认真比对",
-        "description": "人物认真比对商品的效果或细节，手持商品仔细观察，眼神专注，表情认真，展示商品的精细做工和品质",
-        "unique_marker": "comparing_action"
+        "action": "完整造型",
+        "description": "人物展示完整的商品组合造型，多个商品协调搭配，形成统一的整体形象，突出整体体验感",
+        "unique_marker": "complete_look"
     },
     {
-        "action": "轻松携带",
-        "description": "人物轻松携带商品，一手轻握商品，另一手自然摆动，步伐轻快，表情轻松，展示商品的便携性和实用性",
-        "unique_marker": "carrying_action"
+        "action": "日常出行",
+        "description": "人物以日常出行的方式使用商品，步伐自然，姿态舒适，展现商品在日常生活中的实用性",
+        "unique_marker": "daily_outing"
     },
 ]
 
@@ -264,14 +267,15 @@ USE_ENVIRONMENTS = [
 ]
 
 
-def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
+def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_count: int = 1) -> str:
     """
-    为4张图片分别增强提示词，确保多样性、真实体验、表情丰富、光影真实、高级感强、人脸高度一致、背景自然融合
+    为4张图片分别增强提示词，确保多样性、真实体验、表情丰富、光影真实、高级感强、人脸高度一致、背景自然融合、多商品合理展示
     
     Args:
         prompt: 原始提示词
         index: 图片索引（0-3）
         scene: 统一场景描述
+        product_count: 商品数量（1个或多个）
     
     Returns:
         增强后的提示词
@@ -291,8 +295,13 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
     # 选择表情（多样性 + 明确区分）
     expression = EXPRESSIONS[index % len(EXPRESSIONS)]
     
-    # 选择动作（多样性 + 明确区分）
-    action = ACTION_STYLES[index % len(ACTION_STYLES)]
+    # 选择动作（多样性 + 明确区分 + 支持多商品）
+    # 如果是多个商品，优先选择支持多商品的动作
+    if product_count > 1:
+        multi_product_actions = [a for a in ACTION_STYLES if a['unique_marker'] in ['outfit_display', 'accessory_matching', 'complete_look', 'daily_outing']]
+        action = multi_product_actions[index % len(multi_product_actions)]
+    else:
+        action = ACTION_STYLES[index % len(ACTION_STYLES)]
     
     # 选择使用环境（多样性）
     environment = random.choice(USE_ENVIRONMENTS)
@@ -303,7 +312,7 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
     # 选择真实感增强（1-2个）
     selected_realism = random.sample(REALISM_ENHANCERS, random.randint(1, 2))
     
-    # 构建完整描述 - 突出使用体验、真实光影、高级感、人脸一致性和背景融合
+    # 构建完整描述 - 突出使用体验、真实光影、高级感、人脸一致性、背景融合和多商品展示
     enhanced_prompt_parts = [
         f"{scene}，{environment}",
         f"{scene_config['description']}，{scene_config['shot_type']}，{scene_config['angle']}，{scene_config['unique_marker']}",
@@ -314,6 +323,15 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
         f"{' '.join(selected_fusion)}",
         f"{' '.join(selected_realism)}",
     ]
+    
+    # 如果是多个商品，添加多商品相关的提示
+    if product_count > 1:
+        multi_product_prompts = [
+            "多个商品自然搭配展示，形成完整造型",
+            "主要商品重点展示，次要商品辅助展示",
+            "商品之间风格协调统一，不显拥挤",
+        ]
+        enhanced_prompt_parts.append("，".join(multi_product_prompts))
     
     # 添加文字处理策略（如果涉及远景）
     if scene_config['distance'] == "远距离":
@@ -338,12 +356,14 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str) -> str:
 def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url: str, runtime: ToolRuntime=None) -> str:
     """
     一次性生成4张多样化场景、不同角度、人脸高度一致、背景自然融合的社交媒体营销图片
+    支持单个商品或多个商品组合（多个商品URL用逗号分隔）
     突出用户使用商品的体验，表情丰富，场景多样，人脸保持高度一致，背景与人物自然融合
+    智能识别商品类型，匹配合适的组合方式和场景
     
     Args:
         prompt: 图片生成提示词，描述想要的风格和效果
         user_photo_url: 用户照片的URL（作为人脸参考，必须高度一致）
-        product_photo_url: 商品照片的URL
+        product_photo_url: 商品照片的URL，支持单个商品或多个商品（多个商品用逗号分隔，例如：url1,url2,url3）
         runtime: 工具运行时上下文
     
     Returns:
@@ -353,10 +373,14 @@ def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url
     
     client = ImageGenerationClient(ctx=ctx)
     
+    # 解析商品照片URL（支持单个或多个）
+    product_urls = [url.strip() for url in product_photo_url.split(',') if url.strip()]
+    product_count = len(product_urls)
+    
     # 随机选择一个基础场景
     scene = random.choice(SCENE_STYLES)
     
-    # 为4张图片分别生成提示词（多样性优先 + 人脸高度一致 + 背景自然融合）
+    # 为4张图片分别生成提示词（多样性优先 + 人脸高度一致 + 背景自然融合 + 多商品展示）
     image_urls = []
     
     # 选择人脸一致性强化词（随机2个）
@@ -364,17 +388,20 @@ def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url
     face_consistency_prompt = "，".join(selected_face_consistency)
     
     for i in range(4):
-        # 增强提示词 - 每张图片都有不同的体验和表情，但人脸保持高度一致，背景自然融合
-        enhanced_prompt = enhance_prompt_for_realism(prompt, i, scene)
+        # 增强提示词 - 每张图片都有不同的体验和表情，但人脸保持高度一致，背景自然融合，多商品合理展示
+        enhanced_prompt = enhance_prompt_for_realism(prompt, i, scene, product_count)
         
         # 合并完整提示词（包含人脸一致性和背景融合）
         full_prompt = f"{enhanced_prompt}，{face_consistency_prompt}"
         
         try:
             # 生成单张图片，始终使用用户照片作为人脸参考（确保高度一致）
+            # 如果是多个商品，将所有商品照片都作为参考图
+            reference_images = [user_photo_url] + product_urls
+            
             response = client.generate(
                 prompt=full_prompt,
-                image=[user_photo_url, product_photo_url],  # 用户照片作为第一张参考，确保人脸高度一致
+                image=reference_images,  # 用户照片和所有商品照片作为参考
                 size="2K",
                 watermark=False,
                 response_format="url"
