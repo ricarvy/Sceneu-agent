@@ -1,12 +1,13 @@
 """
 图片生成工具
 支持图生图功能，将用户照片与商品照片（支持单个或多个商品）合成为营销图片
-支持一次性生成4张同一场景下不同角度的图片
+支持一次性生成4张同一场景下不同pose和表情的图片
 突出用户使用商品的体验和多样性
 支持智能商品识别和组合匹配
-支持用户上传场景图
+支持用户上传场景图（如果上传，所有图片都符合此场景）
 生成9:16比例图片
 强化脸部细节刻画
+降低AI感，保持真实自然
 """
 import random
 from langchain.tools import tool, ToolRuntime
@@ -14,16 +15,23 @@ from coze_coding_dev_sdk import ImageGenerationClient
 from coze_coding_utils.runtime_ctx.context import new_context
 
 
-# 真实感增强关键词库（强化版）
+# 真实感增强关键词库（降低AI感 + 真实自然）
 REALISM_ENHANCERS = [
-    # 质感相关
-    "像真实拍摄", "真实质感", "自然肤色", "轻度后期", "保留纹理",
-    "生活化", "自然过渡", "真实细节", "生活气息", "像摄影师拍摄",
+    # 真实感相关（降低AI感）
+    "像真人照片拍摄", "真实质感", "自然肤色", "轻度后期", "保留皮肤纹理",
+    "生活化", "自然过渡", "真实细节", "生活气息", "像专业摄影师拍摄",
+    "避免过度AI化", "避免过度美化", "避免过度修饰", "保持真实感",
+    
     # 人物互动相关
-    "人物正在使用商品", "手部自然接触", "眼神自然交流", "表情与使用场景协调",
-    "自然握持", "真实互动", "使用状态", "展示状态", "享受体验",
+    "人物自然使用商品", "手部自然接触", "眼神自然交流", "表情与使用场景自然协调",
+    "自然握持", "真实互动", "自然使用状态", "自然展示状态", "享受体验",
+    
     # 多商品互动相关
     "多个商品自然搭配", "不显拥挤", "主要商品重点展示", "次要商品辅助展示",
+    
+    # 降低AI感
+    "皮肤有自然纹理和毛孔", "面部有自然的阴影和细节", "头发有自然的质感",
+    "整体画面真实自然，不虚假", "色彩真实，不过度饱和", "光影真实，不过度夸张",
 ]
 
 # 背景融合关键词库（减少剥离感）
@@ -36,24 +44,48 @@ BACKGROUND_FUSION = [
     "人物反光与环境光呼应，增强真实感",
 ]
 
-# 人脸一致性关键词库（高度一致 - 强化版）
+# 人脸一致性关键词库（高度一致 + 自然真实 + 降低AI感）
 FACE_CONSISTENCY = [
-    "严格保持人脸特征，与原图人脸高度一致，可轻微美颜但必须能看出是同一个人",
+    # 基础一致性
+    "严格保持人脸特征，与原图人脸高度一致，必须能看出是同一个人",
     "保持原照片的发型、头发颜色、发型细节",
     "保持原照片的五官位置和相对比例，眼睛形状、大小、眼距",
     "保持原照片的脸型轮廓，下巴形状、颧骨位置",
     "保持原照片的鼻子特征，鼻梁高低、鼻翼大小、鼻头形状",
     "保持原照片的嘴巴特征，嘴唇厚薄、嘴型、嘴角形状",
     "保持原照片的眉毛形状和位置",
-    "人脸变形程度极小，仅允许轻微的角度调整，禁止大幅度改变人脸结构",
-    "保持原照片的表情风格，仅调整表情细节（如微笑幅度），禁止改变表情基调",
-    "保持原照片的肤色特征，仅允许轻微提亮或调色，禁止改变肤色本质",
-    "人脸细节刻画精细，皮肤纹理、毛孔、细小皱纹等细节清晰可见",
-    "眼睛细节清晰，眼白清澈、瞳孔反光、睫毛细节",
-    "鼻子细节立体，鼻梁线条、鼻翼轮廓、鼻孔细节",
-    "嘴巴细节自然，嘴唇纹理、嘴角微动、牙齿细节",
-    "禁止面部视觉崩塌，禁止五官变形、眼睛不对称、表情怪异",
-    "禁止过度美化，禁止过度磨皮、过度液化、过度美白",
+    "保持原照片的肤色特征，仅允许极轻微的自然调色",
+    
+    # 自然真实感（降低AI感）
+    "像真人照片，避免过度AI化效果",
+    "保持皮肤的天然质感，保留自然的纹理和毛孔",
+    "脸型保持自然，不要过度液化或变形",
+    "眼睛保持自然大小，不要过度放大或改变形状",
+    "鼻子保持自然形状，不要过度修饰",
+    "嘴巴保持自然形状，不要过度塑形",
+    "肤色保持自然真实，不要过度美白或改变色温",
+    "发际线保持自然，不要过度修饰",
+    "面部阴影自然真实，不要过度去除",
+    
+    # 禁止过度处理
+    "禁止过度磨皮，皮肤不能像塑料一样光滑",
+    "禁止过度液化，不能改变脸型或五官位置",
+    "禁止过度美白，肤色不能失真",
+    "禁止过度修饰，保持原有的人物特征",
+    "禁止过度美化，保持真实感",
+    
+    # 细节刻画
+    "眼睛细节清晰自然，眼白有血丝自然痕迹，瞳孔真实反光",
+    "鼻子细节自然立体，鼻梁有自然的高低起伏",
+    "嘴巴细节自然真实，嘴唇有自然纹理",
+    "皮肤质感真实，有自然的细小纹理和毛孔",
+    "面部表情自然流畅，不要僵硬或过度夸张",
+    
+    # 整体一致性
+    "4张图片的人脸必须高度一致，像同一个人在不同pose和表情下的照片",
+    "人脸角度可以略有不同，但五官特征必须一致",
+    "表情可以不同，但面部结构必须一致",
+    "气质风格保持一致，不要出现不同风格的混合",
 ]
 
 # 场景关键词库（多样化场景）
@@ -63,131 +95,143 @@ SCENE_STYLES = [
     "户外公园长椅", "书店阅读区", "地铁站通勤中",
 ]
 
-# 4张图片的使用场景和角度配置（多样性优先 + 明确区分）
-FOUR_SHOT_SCENES = [
+# 4张图片的拍照姿势配置（同一场景下，不同pose）
+FOUR_SHOT_POSES = [
     {
-        "name": "整体使用场景",
-        "shot_type": "中景全身",
-        "distance": "中距离",
-        "angle": "45度侧拍",
-        "description": "中景全身构图，人物在环境中使用商品，展现完整的使用场景和整体体验感，背景清晰可见",
-        "focus": "整体使用体验",
-        "unique_marker": "full_body_usage"
+        "name": "站立展示",
+        "pose_description": "自然站立姿态，身体略侧向镜头约15度，双脚自然分开与肩同宽，一手自然下垂，一手轻触或手持商品，姿态优雅自然",
+        "camera_position": "相机水平，构图舒适",
+        "focus": "展示商品的整体效果和个人气质",
+        "unique_marker": "standing_pose"
     },
     {
-        "name": "细节互动特写",
-        "shot_type": "近景半身",
-        "distance": "近距离",
-        "angle": "正面特写",
-        "description": "近景半身构图，聚焦人物上半身与商品的互动细节，商品占据画面重要位置，突出商品质感和手部精细动作",
-        "focus": "互动细节",
-        "unique_marker": "close_up_interaction"
+        "name": "坐姿体验",
+        "pose_description": "自然坐姿，身体前倾约20度，双手配合使用商品或放在桌面上，表情专注享受，姿态轻松舒适",
+        "camera_position": "相机略微俯视约10度，构图自然",
+        "focus": "展现商品在实际使用场景中的体验感",
+        "unique_marker": "sitting_pose"
     },
     {
-        "name": "远景氛围",
-        "shot_type": "远景全身",
-        "distance": "远距离",
-        "angle": "远景广角",
-        "description": "远景全身广角构图，展现人物在环境中的整体状态，环境占据较大比例，营造氛围感，适合有文字/logo的商品",
-        "focus": "氛围场景",
-        "unique_marker": "wide_angle_atmosphere"
+        "name": "侧身展示",
+        "pose_description": "侧身约45度面向镜头，身体姿态舒展，一手举商品展示，另一手自然摆放在身侧，姿态优雅动感",
+        "camera_position": "相机水平，构图有动感",
+        "focus": "展示商品的侧面细节和个人曲线",
+        "unique_marker": "side_pose"
     },
     {
-        "name": "第一视角体验",
-        "shot_type": "第一视角",
-        "distance": "超近距离",
-        "angle": "第一视角手持",
-        "description": "第一视角手持商品，商品占据画面主体，仿佛用户自己正在使用，强代入感和沉浸感，背景虚化明显",
-        "focus": "体验代入",
-        "unique_marker": "first_person_pov"
+        "name": "特写互动",
+        "pose_description": "半身构图，双手操作或展示商品细节，身体略前倾，表情专注或愉悦，姿态真实自然",
+        "camera_position": "相机水平，构图紧凑",
+        "focus": "展现商品细节和手部操作的互动感",
+        "unique_marker": "closeup_pose"
     },
 ]
 
-# 表情多样性库（突出用户体验 + 高度一致 + 明确区分）
+# 表情多样性库（自然真实 + 丰富多样 + 降低AI感）
 EXPRESSIONS = [
     {
         "expression": "微笑满足",
-        "description": "温柔的微笑，嘴角上扬约15度，眼神柔和温暖，眉毛自然舒展，脸颊有轻微的微笑肌显现，表情满足愉悦，享受使用商品的美好体验",
+        "description": "自然的微笑，嘴角上扬约10-15度，眼神柔和温暖，眉毛自然舒展，脸颊有轻微的微笑肌，表情满足愉悦，像在享受美好体验",
         "unique_marker": "smiling_satisfied"
     },
     {
         "expression": "专注认真",
-        "description": "眼神专注地注视商品，眼睛微微睁大，眉毛微微聚拢，嘴唇紧闭成思考状，表情认真严肃，沉浸在体验商品的功能和细节中",
+        "description": "眼神专注自然，眼睛微微睁大，眉毛自然聚拢，嘴唇自然闭合，表情认真专注，像在认真体验商品",
         "unique_marker": "focused_serious"
     },
     {
-        "expression": "惊喜愉悦",
-        "description": "眼睛睁大，眼神发光，眉毛挑高，嘴巴张开约30度露出整齐牙齿，表情惊喜兴奋，发现商品意想不到的功能或效果",
-        "unique_marker": "surprised_delighted"
+        "expression": "放松惬意",
+        "description": "完全放松的表情，眼神柔和自然，嘴角自然放松，表情松弛舒适，像在享受轻松的时光",
+        "unique_marker": "relaxed_comfortable"
     },
     {
-        "expression": "放松自然",
-        "description": "完全放松的表情，眼睛半睁半闭，眼神柔和懒散，嘴角自然下垂，嘴唇微张，表情松弛舒适，享受商品带来的放松体验",
-        "unique_marker": "relaxed_natural"
-    },
-    {
-        "expression": "自信优雅",
-        "description": "自信的微笑，眼神坚定明亮，下巴微微抬起，嘴角上扬约20度，表情优雅大方，展现使用商品时的自信和优雅气质",
-        "unique_marker": "confident_elegant"
+        "expression": "自信大方",
+        "description": "自然的自信，眼神明亮温和，下巴自然舒展，嘴角微微上扬约10度，表情自信大方，像在展示自己的选择",
+        "unique_marker": "confident_natural"
     },
     {
         "expression": "开心愉悦",
-        "description": "灿烂的笑容，眼睛弯成月牙状，嘴角上扬约40度露出牙齿，脸颊有明显的笑纹，表情开心快乐，对商品非常满意",
-        "unique_marker": "happy_joyful"
+        "description": "自然的笑容，眼睛有笑意，嘴角上扬约20-25度，表情开心愉悦，像遇到开心的事情",
+        "unique_marker": "happy_natural"
     },
     {
-        "expression": "思考探索",
-        "description": "思考的表情，眼神游移探索，眉毛微微皱起，手指轻触下巴，表情好奇探索，正在探索商品的各种可能性",
-        "unique_marker": "thinking_exploring"
+        "expression": "好奇探索",
+        "description": "好奇的表情，眼神游移自然，眉毛自然挑起，表情好奇有趣，像在探索新事物",
+        "unique_marker": "curious_exploring"
     },
     {
-        "expression": "满意肯定",
-        "description": "满意的点头表情，眼神肯定赞赏，嘴角上扬约25度，头部微微点头，表情肯定认可，对商品的效果非常满意",
-        "unique_marker": "satisfied_approval"
+        "expression": "温和亲切",
+        "description": "温和的表情，眼神温柔，嘴角自然放松，表情亲切友好，像与朋友分享",
+        "unique_marker": "gentle_friendly"
+    },
+    {
+        "expression": "认真思考",
+        "description": "认真思考的表情，眼神思考，眉毛自然皱起，表情认真有深度，像在认真考虑",
+        "unique_marker": "thoughtful_serious"
+    },
+    {
+        "expression": "平静自然",
+        "description": "平静自然的表情，眼神平和，嘴角自然，表情平静放松，像在日常状态",
+        "unique_marker": "calm_natural"
+    },
+    {
+        "expression": "欣赏赞赏",
+        "description": "欣赏的表情，眼神赞赏，嘴角自然上扬约15度，表情欣赏认可，像在欣赏美好的事物",
+        "unique_marker": "appreciative_approving"
     },
 ]
 
-# 使用动作多样性库（明确区分 + 丰富多样 + 支持多商品）
+# 使用动作多样性库（自然pose + 丰富多样 + 支持多商品）
 ACTION_STYLES = [
     {
+        "action": "自然手持",
+        "description": "自然手持商品，姿态放松，手势自然大方，商品在手中位置合适，动作流畅自然",
+        "unique_marker": "holding_natural"
+    },
+    {
         "action": "正在使用",
-        "description": "人物正在使用商品的核心功能，双手协调操作商品，动作流畅自然流畅，展示商品的实际使用方式和使用过程",
-        "unique_marker": "using_action"
+        "description": "自然地使用商品，动作协调流畅，展示商品的实际使用方式，姿态真实自然",
+        "unique_marker": "using_natural"
     },
     {
-        "action": "手持展示",
-        "description": "人物手持商品展示给镜头，一手托举商品，另一手轻触商品细节，手势优雅大方，商品在画面中清晰可见",
-        "unique_marker": "holding_display"
+        "action": "整理调整",
+        "description": "自然地整理或调整商品，手指动作精细自然，表情专注认真，姿态放松舒适",
+        "unique_marker": "adjusting_natural"
     },
     {
-        "action": "调整细节",
-        "description": "人物调整商品的细节设置，手指精细操作商品的控制区或调节按钮，表情专注，展示商品的可调节性和个性化功能",
-        "unique_marker": "adjusting_action"
+        "action": "展示分享",
+        "description": "自然地展示商品，一手托举，另一手轻触，姿态优雅大方，手势自然真实",
+        "unique_marker": "displaying_natural"
     },
     {
-        "action": "享受体验",
-        "description": "人物享受商品带来的体验，身体后仰放松，双手自然放置，姿态舒展舒适，表情满足，展现商品带来的愉悦感受",
-        "unique_marker": "enjoying_action"
+        "action": "搭配展示",
+        "description": "展示商品与整体造型的搭配，身体姿态自然优雅，突出商品和整体效果的和谐",
+        "unique_marker": "matching_natural"
     },
     {
-        "action": "穿搭展示",
-        "description": "人物穿着服装类商品，展示穿搭效果，身体姿态自然优雅，突出服装的质感和设计细节",
-        "unique_marker": "outfit_display"
+        "action": "佩戴展示",
+        "description": "自然地佩戴配饰，配饰位置合适自然，姿态舒适放松，展示配饰的搭配效果",
+        "unique_marker": "wearing_natural"
     },
     {
-        "action": "配饰搭配",
-        "description": "人物佩戴配饰类商品（如挎包、首饰），展示配饰与整体造型的搭配效果，配饰位置自然合适",
-        "unique_marker": "accessory_matching"
+        "action": "体验感受",
+        "description": "体验商品的感受，身体放松，姿态舒适，表情满足，展现商品带来的美好体验",
+        "unique_marker": "experiencing_natural"
     },
     {
-        "action": "完整造型",
-        "description": "人物展示完整的商品组合造型，多个商品协调搭配，形成统一的整体形象，突出整体体验感",
-        "unique_marker": "complete_look"
+        "action": "日常状态",
+        "description": "以日常自然的状态使用商品，姿态舒适放松，动作流畅自然，展现商品在生活中的实用性",
+        "unique_marker": "daily_state"
     },
     {
-        "action": "日常出行",
-        "description": "人物以日常出行的方式使用商品，步伐自然，姿态舒适，展现商品在日常生活中的实用性",
-        "unique_marker": "daily_outing"
+        "action": "站立展示",
+        "description": "自然站立姿态，身体略侧向镜头，一手下垂一手持商品，姿态优雅舒展",
+        "unique_marker": "standing_natural"
+    },
+    {
+        "action": "坐姿体验",
+        "description": "自然坐姿，身体前倾，双手配合使用商品，姿态放松舒适，体验感强",
+        "unique_marker": "sitting_natural"
     },
 ]
 
@@ -265,7 +309,7 @@ COLOR_STYLES = [
 
 # 文字/Logo处理策略
 TEXT_HANDLING = {
-    "use_distant_shot": "远景构图，避免文字/logo细节问题",
+    "use_suitable_pose": "使用合适的pose展示商品，避免文字/logo细节问题",
     "slightly_blur": "适度虚化，保持整体视觉效果",
     "focus_on_experience": "聚焦人物体验，文字作为背景元素",
 }
@@ -283,7 +327,7 @@ USE_ENVIRONMENTS = [
 
 def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_count: int = 1, has_custom_scene: bool = False) -> str:
     """
-    为4张图片分别增强提示词，确保多样性、真实体验、表情丰富、光影真实、高级感强、人脸高度一致、背景自然融合、多商品合理展示、脸部细节精细
+    为4张图片分别增强提示词，确保同一场景下不同pose/表情的多样性、真实体验、降低AI感、人脸高度一致
     
     Args:
         prompt: 原始提示词
@@ -295,25 +339,25 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_coun
     Returns:
         增强后的提示词
     """
-    # 选择该图片的场景配置（多样性优先 + 明确区分）
-    scene_config = FOUR_SHOT_SCENES[index]
+    # 选择该图片的拍照姿势（不同pose，同一场景）
+    pose_config = FOUR_SHOT_POSES[index]
     
-    # 选择光线风格（真实光影 + 明确区分）
+    # 选择光线风格（真实光影 + 自然真实）
     lighting = LIGHTING_STYLES[index % len(LIGHTING_STYLES)]
     
-    # 选择构图风格（高级感 + 明确区分）
+    # 选择构图风格（自然真实）
     composition = COMPOSITION_STYLES[index % len(COMPOSITION_STYLES)]
     
-    # 选择色彩风格（高级感 + 明确区分）
+    # 选择色彩风格（自然真实）
     color = COLOR_STYLES[index % len(COLOR_STYLES)]
     
-    # 选择表情（多样性 + 明确区分）
+    # 选择表情（多样性 + 自然真实）
     expression = EXPRESSIONS[index % len(EXPRESSIONS)]
     
-    # 选择动作（多样性 + 明确区分 + 支持多商品）
-    # 如果是多个商品，优先选择支持多商品的动作
+    # 选择动作（多样性 + 自然真实 + 支持多商品）
     if product_count > 1:
-        multi_product_actions = [a for a in ACTION_STYLES if a['unique_marker'] in ['outfit_display', 'accessory_matching', 'complete_look', 'daily_outing']]
+        # 多商品时选择支持搭配的动作
+        multi_product_actions = [a for a in ACTION_STYLES if a['unique_marker'] in ['matching_natural', 'wearing_natural', 'displaying_natural']]
         action = multi_product_actions[index % len(multi_product_actions)]
     else:
         action = ACTION_STYLES[index % len(ACTION_STYLES)]
@@ -324,13 +368,13 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_coun
     # 选择背景融合（2-3个）
     selected_fusion = random.sample(BACKGROUND_FUSION, random.randint(2, 3))
     
-    # 选择真实感增强（1-2个）
-    selected_realism = random.sample(REALISM_ENHANCERS, random.randint(1, 2))
+    # 选择真实感增强（2-3个，强调降低AI感）
+    selected_realism = random.sample(REALISM_ENHANCERS, random.randint(2, 3))
     
-    # 构建完整描述 - 突出使用体验、真实光影、高级感、人脸一致性、背景融合、多商品展示、脸部细节
+    # 构建完整描述 - 突出pose多样性、表情多样性、真实体验、降低AI感、人脸一致性、背景自然融合
     enhanced_prompt_parts = [
         f"{scene}，{environment}" if not has_custom_scene else f"{scene}",
-        f"{scene_config['description']}，{scene_config['shot_type']}，{scene_config['angle']}，{scene_config['unique_marker']}",
+        f"{pose_config['pose_description']}，{pose_config['camera_position']}",
         f"{expression['description']}，{action['description']}",
         f"{lighting['description']}，{lighting['unique_marker']}",
         f"{composition['description']}，{composition['unique_marker']}",
@@ -347,11 +391,6 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_coun
             "商品之间风格协调统一，不显拥挤",
         ]
         enhanced_prompt_parts.append("，".join(multi_product_prompts))
-    
-    # 添加文字处理策略（如果涉及远景）
-    if scene_config['distance'] == "远距离":
-        text_handling = TEXT_HANDLING["use_distant_shot"]
-        enhanced_prompt_parts.append(text_handling)
     
     # 合并提示词
     enhanced_prompt = "，".join(enhanced_prompt_parts)
@@ -370,10 +409,12 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_coun
 @tool
 def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url: str, scene_photo_url: str = "", runtime: ToolRuntime=None) -> str:
     """
-    一次性生成4张多样化场景、不同角度、人脸高度一致、背景自然融合的社交媒体营销图片
+    一次性生成4张同一场景下不同pose和表情的社交媒体营销图片
     支持单个商品或多个商品组合（多个商品URL用逗号分隔）
     支持用户上传场景图（如果上传，所有图片都符合用户指定的场景）
-    突出用户使用商品的体验，表情丰富，场景多样，人脸保持高度一致，背景与人物自然融合
+    4张图片保持同一场景（用户指定场景或AI根据服饰搭配自动生成），但在不同拍照姿势和表情下展现
+    人脸保持高度一致和自然真实，降低AI感，避免过度美化
+    突出用户使用商品的体验，表情丰富自然，pose多样自然，光影真实自然，背景与人物自然融合
     智能识别商品类型，匹配合适的组合方式和场景
     生成9:16比例图片，强化脸部细节刻画
     
