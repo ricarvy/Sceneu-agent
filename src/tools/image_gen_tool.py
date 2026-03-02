@@ -4,6 +4,9 @@
 支持一次性生成4张同一场景下不同角度的图片
 突出用户使用商品的体验和多样性
 支持智能商品识别和组合匹配
+支持用户上传场景图
+生成9:16比例图片
+强化脸部细节刻画
 """
 import random
 from langchain.tools import tool, ToolRuntime
@@ -33,13 +36,24 @@ BACKGROUND_FUSION = [
     "人物反光与环境光呼应，增强真实感",
 ]
 
-# 人脸一致性关键词库（高度一致）
+# 人脸一致性关键词库（高度一致 - 强化版）
 FACE_CONSISTENCY = [
     "严格保持人脸特征，与原图人脸高度一致，可轻微美颜但必须能看出是同一个人",
-    "保持原照片的发型、五官位置、脸型轮廓、眼睛特征、鼻子特征、嘴巴特征",
+    "保持原照片的发型、头发颜色、发型细节",
+    "保持原照片的五官位置和相对比例，眼睛形状、大小、眼距",
+    "保持原照片的脸型轮廓，下巴形状、颧骨位置",
+    "保持原照片的鼻子特征，鼻梁高低、鼻翼大小、鼻头形状",
+    "保持原照片的嘴巴特征，嘴唇厚薄、嘴型、嘴角形状",
+    "保持原照片的眉毛形状和位置",
     "人脸变形程度极小，仅允许轻微的角度调整，禁止大幅度改变人脸结构",
     "保持原照片的表情风格，仅调整表情细节（如微笑幅度），禁止改变表情基调",
     "保持原照片的肤色特征，仅允许轻微提亮或调色，禁止改变肤色本质",
+    "人脸细节刻画精细，皮肤纹理、毛孔、细小皱纹等细节清晰可见",
+    "眼睛细节清晰，眼白清澈、瞳孔反光、睫毛细节",
+    "鼻子细节立体，鼻梁线条、鼻翼轮廓、鼻孔细节",
+    "嘴巴细节自然，嘴唇纹理、嘴角微动、牙齿细节",
+    "禁止面部视觉崩塌，禁止五官变形、眼睛不对称、表情怪异",
+    "禁止过度美化，禁止过度磨皮、过度液化、过度美白",
 ]
 
 # 场景关键词库（多样化场景）
@@ -267,15 +281,16 @@ USE_ENVIRONMENTS = [
 ]
 
 
-def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_count: int = 1) -> str:
+def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_count: int = 1, has_custom_scene: bool = False) -> str:
     """
-    为4张图片分别增强提示词，确保多样性、真实体验、表情丰富、光影真实、高级感强、人脸高度一致、背景自然融合、多商品合理展示
+    为4张图片分别增强提示词，确保多样性、真实体验、表情丰富、光影真实、高级感强、人脸高度一致、背景自然融合、多商品合理展示、脸部细节精细
     
     Args:
         prompt: 原始提示词
         index: 图片索引（0-3）
         scene: 统一场景描述
         product_count: 商品数量（1个或多个）
+        has_custom_scene: 是否有用户自定义场景
     
     Returns:
         增强后的提示词
@@ -312,9 +327,9 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_coun
     # 选择真实感增强（1-2个）
     selected_realism = random.sample(REALISM_ENHANCERS, random.randint(1, 2))
     
-    # 构建完整描述 - 突出使用体验、真实光影、高级感、人脸一致性、背景融合和多商品展示
+    # 构建完整描述 - 突出使用体验、真实光影、高级感、人脸一致性、背景融合、多商品展示、脸部细节
     enhanced_prompt_parts = [
-        f"{scene}，{environment}",
+        f"{scene}，{environment}" if not has_custom_scene else f"{scene}",
         f"{scene_config['description']}，{scene_config['shot_type']}，{scene_config['angle']}，{scene_config['unique_marker']}",
         f"{expression['description']}，{action['description']}",
         f"{lighting['description']}，{lighting['unique_marker']}",
@@ -353,17 +368,20 @@ def enhance_prompt_for_realism(prompt: str, index: int, scene: str, product_coun
 
 
 @tool
-def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url: str, runtime: ToolRuntime=None) -> str:
+def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url: str, scene_photo_url: str = "", runtime: ToolRuntime=None) -> str:
     """
     一次性生成4张多样化场景、不同角度、人脸高度一致、背景自然融合的社交媒体营销图片
     支持单个商品或多个商品组合（多个商品URL用逗号分隔）
+    支持用户上传场景图（如果上传，所有图片都符合用户指定的场景）
     突出用户使用商品的体验，表情丰富，场景多样，人脸保持高度一致，背景与人物自然融合
     智能识别商品类型，匹配合适的组合方式和场景
+    生成9:16比例图片，强化脸部细节刻画
     
     Args:
         prompt: 图片生成提示词，描述想要的风格和效果
         user_photo_url: 用户照片的URL（作为人脸参考，必须高度一致）
         product_photo_url: 商品照片的URL，支持单个商品或多个商品（多个商品用逗号分隔，例如：url1,url2,url3）
+        scene_photo_url: 场景照片的URL（可选，如果上传，所有图片都符合此场景）
         runtime: 工具运行时上下文
     
     Returns:
@@ -377,32 +395,40 @@ def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url
     product_urls = [url.strip() for url in product_photo_url.split(',') if url.strip()]
     product_count = len(product_urls)
     
-    # 随机选择一个基础场景
-    scene = random.choice(SCENE_STYLES)
+    # 检查是否有自定义场景
+    has_custom_scene = bool(scene_photo_url and scene_photo_url.strip())
     
-    # 为4张图片分别生成提示词（多样性优先 + 人脸高度一致 + 背景自然融合 + 多商品展示）
+    # 随机选择一个基础场景（如果没有自定义场景）
+    if has_custom_scene:
+        scene = "用户指定的场景"
+    else:
+        scene = random.choice(SCENE_STYLES)
+    
+    # 为4张图片分别生成提示词（多样性优先 + 人脸高度一致 + 背景自然融合 + 多商品展示 + 脸部细节精细）
     image_urls = []
     
-    # 选择人脸一致性强化词（随机2个）
-    selected_face_consistency = random.sample(FACE_CONSISTENCY, 2)
+    # 选择人脸一致性强化词（随机3-4个，强化脸部细节）
+    selected_face_consistency = random.sample(FACE_CONSISTENCY, random.randint(3, 4))
     face_consistency_prompt = "，".join(selected_face_consistency)
     
     for i in range(4):
-        # 增强提示词 - 每张图片都有不同的体验和表情，但人脸保持高度一致，背景自然融合，多商品合理展示
-        enhanced_prompt = enhance_prompt_for_realism(prompt, i, scene, product_count)
+        # 增强提示词 - 每张图片都有不同的体验和表情，但人脸保持高度一致，背景自然融合，多商品合理展示，脸部细节精细
+        enhanced_prompt = enhance_prompt_for_realism(prompt, i, scene, product_count, has_custom_scene)
         
         # 合并完整提示词（包含人脸一致性和背景融合）
         full_prompt = f"{enhanced_prompt}，{face_consistency_prompt}"
         
         try:
             # 生成单张图片，始终使用用户照片作为人脸参考（确保高度一致）
-            # 如果是多个商品，将所有商品照片都作为参考图
+            # 如果有自定义场景，将场景图也作为参考图
             reference_images = [user_photo_url] + product_urls
+            if has_custom_scene:
+                reference_images.append(scene_photo_url)
             
             response = client.generate(
                 prompt=full_prompt,
-                image=reference_images,  # 用户照片和所有商品照片作为参考
-                size="2K",
+                image=reference_images,  # 用户照片、所有商品照片、场景图（如果有）作为参考
+                size="1080x1920",  # 9:16比例
                 watermark=False,
                 response_format="url"
             )
