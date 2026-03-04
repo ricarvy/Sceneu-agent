@@ -9,10 +9,11 @@
 强化脸部细节刻画
 降低AI感，保持真实自然
 """
+import os
 import random
-from langchain.tools import tool, ToolRuntime
-from coze_coding_dev_sdk import ImageGenerationClient
-from coze_coding_utils.runtime_ctx.context import new_context
+import re
+from langchain.tools import tool
+from typing import Optional, Tuple
 
 
 # 真实感增强关键词库（降低AI感 + 真实自然）
@@ -297,6 +298,60 @@ COMPOSITION_STYLES = [
     },
 ]
 
+PRODUCT_CATEGORY_PATTERNS: list[Tuple[str, str]] = [
+    ("连衣裙|裙|半身裙|dress|skirt", "连衣裙/裙子"),
+    ("上衣|衬衫|t恤|tee|sweatshirt|hoodie|shirt|top", "上衣"),
+    ("外套|夹克|大衣|西装|coat|jacket|blazer|trench", "外套"),
+    ("裤|牛仔裤|长裤|短裤|pants|jeans|trousers|shorts", "裤装"),
+    ("鞋|靴|高跟|运动鞋|sneaker|heels|boots|shoes", "鞋子"),
+    ("包|手提包|挎包|肩包|背包|bag|handbag|tote|backpack|crossbody", "包袋"),
+    ("眼镜|墨镜|太阳镜|glasses|sunglasses", "眼镜"),
+    ("手表|watch", "手表"),
+    ("帽|cap|hat|beanie", "帽子"),
+    ("项链|necklace", "项链"),
+    ("耳环|earring", "耳环"),
+    ("口红|lipstick", "口红"),
+]
+
+def infer_product_category(title: Optional[str], image_url: Optional[str]) -> Optional[str]:
+    candidates: list[str] = []
+    if title:
+        candidates.append(title)
+    if image_url:
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(image_url)
+            candidates.append(p.path)
+        except Exception:
+            candidates.append(image_url)
+    text = " ".join([c.lower() for c in candidates if c])
+    for patt, cat in PRODUCT_CATEGORY_PATTERNS:
+        try:
+            import re
+            if re.search(patt, text):
+                return cat
+        except Exception:
+            if any(tok in text for tok in patt.split("|")):
+                return cat
+    return None
+
+def extract_urls(text: Optional[str]) -> list[str]:
+    if not text:
+        return []
+    t = text.replace("，", ",").replace("\n", " ").replace("\r", " ")
+    t = t.replace("`", "").replace("“", "").replace("”", "").replace("‘", "").replace("’", "")
+    urls = re.findall(r"https?://[^\s,]+", t)
+    res = []
+    for u in urls:
+        u = u.strip().strip(" ,;)]}>\"'")
+        if u.startswith("http"):
+            res.append(u)
+    if not res and ("," in t):
+        parts = [p.strip() for p in t.split(",") if p.strip()]
+        for p in parts:
+            if p.startswith("http"):
+                res.append(p)
+    return res
 # 高级感色彩关键词库（明确区分）
 COLOR_STYLES = [
     {
@@ -420,75 +475,191 @@ def enhance_prompt_for_realism(prompt: str, scene: str, product_count: int = 1, 
 
 
 @tool
-def generate_marketing_image(prompt: str, user_photo_url: str, product_photo_url: str, scene_photo_url: str = "", runtime: ToolRuntime=None) -> str:
+def generate_marketing_image(
+    user_photo_url: str,
+    product_photo_url: str,
+    prompt: str,
+    product_title: str = None,
+    scene_ref_url: str = None,
+    mode: str = "inspire"
+) -> str:
     """
-    生成1张完整的社交媒体营销图片
-    支持单个商品或多个商品组合（多个商品URL用逗号分隔）
-    支持用户上传场景图（如果上传，图片符合用户指定的场景）
-    图片使用站立姿势，姿势轻微变化，保持自然真实
-    人脸保持高度一致和自然真实，降低AI感，避免过度美化
-    突出用户使用商品的体验，表情自然，pose轻微变化，光影真实自然，背景与人物自然融合
-    智能识别商品类型，匹配合适的组合方式和场景
-    生成9:16比例图片，强化脸部细节刻画
+    Generate a social media marketing image based on user photo and product photo.
     
     Args:
-        prompt: 图片生成提示词，描述想要的风格和效果
-        user_photo_url: 用户照片的URL（作为人脸参考，必须高度一致）
-        product_photo_url: 商品照片的URL，支持单个商品或多个商品（多个商品用逗号分隔，例如：url1,url2,url3）
-        scene_photo_url: 场景照片的URL（可选，如果上传，图片符合此场景）
-        runtime: 工具运行时上下文
-    
-    Returns:
-        生成的1张图片URL
+        user_photo_url: The URL of the user's photo.
+        product_photo_url: The URL of the product photo (supports multiple products).
+        prompt: The prompt describing the style and atmosphere.
+        scene_ref_url: (Optional) The URL of a scene reference image.
+        mode: (Optional) The generation mode. "copy" means maintaining the pose and scene of the user photo, only replacing the face and product. "inspire" means the AI is free to be creative (default).
     """
-    ctx = new_context(method="generate_marketing_image")
-    
-    client = ImageGenerationClient(ctx=ctx)
-    
-    # 解析商品照片URL（支持单个或多个）
-    product_urls = [url.strip() for url in product_photo_url.split(',') if url.strip()]
-    product_count = len(product_urls)
-    
-    # 检查是否有自定义场景
-    has_custom_scene = bool(scene_photo_url and scene_photo_url.strip())
-    
-    # 随机选择一个基础场景（如果没有自定义场景）
-    if has_custom_scene:
-        scene = "用户指定的场景"
-    else:
-        scene = random.choice(SCENE_STYLES)
-    
-    # 生成提示词（站立姿势轻微变化 + 人脸高度一致 + 背景自然融合 + 多商品展示 + 脸部细节精细）
-    
-    # 选择人脸一致性强化词（随机3-4个，强化脸部细节）
-    selected_face_consistency = random.sample(FACE_CONSISTENCY, random.randint(3, 4))
-    face_consistency_prompt = "，".join(selected_face_consistency)
-    
-    # 增强提示词 - 站立姿势轻微变化，人脸保持高度一致，背景自然融合，多商品合理展示，脸部细节精细
-    enhanced_prompt = enhance_prompt_for_realism(prompt, scene, product_count, has_custom_scene)
-    
-    # 合并完整提示词（包含人脸一致性和背景融合）
-    full_prompt = f"{enhanced_prompt}，{face_consistency_prompt}"
-    
-    try:
-        # 生成1张图片，始终使用用户照片作为人脸参考（确保高度一致）
-        # 如果有自定义场景，将场景图也作为参考图
-        reference_images = [user_photo_url] + product_urls
-        if has_custom_scene:
-            reference_images.append(scene_photo_url)
-        
-        response = client.generate(
-            prompt=full_prompt,
-            image=reference_images,  # 用户照片、所有商品照片、场景图（如果有）作为参考
-            size="1080x1920",  # 9:16比例
-            watermark=False,
-            response_format="url"
+    base_prompt = f"{prompt}, 杰作, 8k分辨率, 极度详细, 专业摄影, 商业级光影"
+
+    mode_prompt = ""
+    if mode == "copy":
+        mode_prompt = (
+            "Keep the human pose, body structure, and background scene exactly the same as the user_photo_url. "
+            "Only replace the face with the user's face (adding appropriate expression) "
+            "and put the product on the person naturally (replace clothes/pants if product is clothing). "
+            "Do not change the composition or background."
         )
+    else:
+        mode_prompt = (
+            "Create a new creative scene and pose. "
+            "The person should be using/wearing the product naturally. "
+            "The facial features must match the user_photo_url. "
+        )
+        if scene_ref_url:
+            mode_prompt += " The background and lighting style must strictly follow the scene_ref_url."
+
+    product_urls_for_category = extract_urls(product_photo_url)
+    
+    # 支持多商品处理
+    product_constraints = []
+    
+    # 检查是否包含多个商品标题（逗号分隔）
+    is_multi_product = product_title and ("," in product_title or "，" in product_title)
+    
+    if is_multi_product:
+        # 多商品逻辑
+        titles = [t.strip() for t in re.split(r'[,，]', product_title) if t.strip()]
         
-        if response.success and response.image_urls:
-            return response.image_urls[0]
-        else:
-            error_msg = ", ".join(response.error_messages) if response.error_messages else "Unknown error"
-            return f"图片生成失败: {error_msg}"
+        # 记录每个商品的信息
+        for i, title in enumerate(titles):
+            # 尝试找到对应的图片URL（假设顺序对应）
+            curr_url = product_urls_for_category[i] if i < len(product_urls_for_category) else None
+            curr_category = infer_product_category(title, curr_url)
+            
+            product_constraints.append(f"商品{i+1}：{title}")
+            if curr_category:
+                product_constraints.append(f"（类别：{curr_category}）")
+                
+                # 添加类别特定的穿着/佩戴约束
+                if curr_category in ["连衣裙/裙子", "上衣", "外套", "裤装"]:
+                    product_constraints.append("- 需自然穿着在人物身上，贴合身体曲线")
+                elif curr_category in ["包袋"]:
+                    product_constraints.append("- 需自然肩背、手提或斜挎")
+                elif curr_category in ["鞋子"]:
+                    product_constraints.append("- 需穿在脚上")
+                elif curr_category in ["眼镜"]:
+                    product_constraints.append("- 需佩戴在脸部")
+                elif curr_category in ["手表", "项链", "耳环", "帽子"]:
+                    product_constraints.append("- 需佩戴在相应身体部位")
+        
+        product_constraints.append("请将上述所有商品自然组合在人物身上，确保搭配协调。")
+        product_constraints.append("严禁自行添加未提到的其他商品。")
+        
+    else:
+        # 单商品逻辑（原有逻辑优化）
+        first_product_url_for_category = product_urls_for_category[0] if product_urls_for_category else None
+        category = infer_product_category(product_title, first_product_url_for_category)
+        
+        if product_title:
+            product_constraints.append(f"核心展示商品：{product_title}。")
+            product_constraints.append(f"请严格基于商品标题“{product_title}”进行生成，不要自行发散或看图说话。")
+            
+        if category:
+            product_constraints.append(f"商品类别：{category}。")
+            if category in ["连衣裙/裙子", "上衣", "外套", "裤装"]:
+                product_constraints.append("以穿着方式展示，衣物自然贴合身体。")
+            elif category in ["包袋"]:
+                product_constraints.append("以肩背/手提/斜挎方式自然展示。")
+            elif category in ["鞋子"]:
+                product_constraints.append("穿在脚上，步态自然。")
+            elif category in ["眼镜"]:
+                product_constraints.append("佩戴在脸部合适位置。")
+            elif category in ["手表"]:
+                product_constraints.append("佩戴在手腕上，松紧合适。")
+            elif category in ["帽子"]:
+                product_constraints.append("佩戴在头部恰当位置。")
+            elif category in ["项链", "耳环"]:
+                product_constraints.append("以佩戴方式展示，位置合理。")
+            elif category in ["口红"]:
+                product_constraints.append("以涂抹效果展示，唇色自然。")
+        
+        product_constraints.append("严格禁止出现多个不同商品或额外配饰，确保单一商品。")
+        product_constraints.append("若商品图存在多件物品，仅选择与标题匹配的一件进行合成。")
+
+    api_key = os.getenv("ARK_API_KEY") or os.getenv("COZE_INTEGRATION_MODEL_API_KEY")
+    base_url = os.getenv("ARK_BASE_URL") or os.getenv("COZE_INTEGRATION_MODEL_BASE_URL") or "https://ark.cn-beijing.volces.com/api/v3"
+    model = os.getenv("ARK_IMAGE_MODEL") or os.getenv("COZE_INTEGRATION_IMAGE_MODEL") or "doubao-seedream-5-0-260128"
+    size = os.getenv("ARK_IMAGE_SIZE") or "2K"
+    response_format = os.getenv("ARK_IMAGE_RESPONSE_FORMAT") or "url"
+    sequential_image_generation = os.getenv("ARK_IMAGE_SEQUENTIAL") or "disabled"
+    stream = (os.getenv("ARK_IMAGE_STREAM") or "false").lower() == "true"
+    watermark = (os.getenv("ARK_IMAGE_WATERMARK") or "true").lower() == "true"
+    count_str = os.getenv("ARK_IMAGE_COUNT") or "4"
+    try:
+        k = max(1, min(8, int(count_str)))
+    except:
+        k = 4
+
+    if not api_key:
+        return "Failed to generate image: ARK_API_KEY is not set"
+
+    try:
+        from volcenginesdkarkruntime import Ark
     except Exception as e:
-        return f"图片生成异常: {str(e)}"
+        return f"Failed to generate image: volcenginesdkarkruntime not installed ({str(e)})"
+
+    try:
+        client = Ark(base_url=base_url, api_key=api_key)
+        product_urls: list[str] = extract_urls(product_photo_url)
+        base_images: list[str] = []
+        if user_photo_url and user_photo_url.startswith("http"):
+            base_images.append(user_photo_url)
+        base_images.extend([u for u in product_urls if u])
+        if mode == "inspire" and scene_ref_url and scene_ref_url.startswith("http"):
+            base_images.append(scene_ref_url)
+
+        results: list[str] = []
+        for _ in range(k):
+            realism_prompt = ", ".join(random.sample(REALISM_ENHANCERS, 5))
+            if mode == "copy":
+                expr = random.choice(EXPRESSIONS)["description"]
+                micro_moves = [
+                    "轻微挥手",
+                    "自然点头",
+                    "微微侧身",
+                    "轻松翘腿",
+                    "抬手整理衣袖",
+                ]
+                micro = random.choice(micro_moves)
+                per_mode = (
+                    "背景、构图、相机机位与用户图保持一致。人物与用户图为同一人，"
+                    "五官与脸型高度一致，避免AI感。允许细微表情变化与小幅肢体动作变化。"
+                )
+                per_prompt = f"{base_prompt}. {per_mode} {expr}，{micro}。{realism_prompt} " + " ".join(product_constraints)
+                images = [u for u in base_images if u]
+            else:
+                per_prompt = f"{base_prompt}. {mode_prompt} {realism_prompt} " + " ".join(product_constraints)
+                images = [u for u in base_images if u]
+
+            from volcenginesdkarkruntime.types.images.images import SequentialImageGenerationOptions
+            seq_mode = "auto" if k > 1 else "disabled"
+            resp = client.images.generate(
+                model=model,
+                prompt=per_prompt,
+                image=images or None,
+                sequential_image_generation=seq_mode,
+                sequential_image_generation_options=SequentialImageGenerationOptions(max_images=k),
+                response_format=response_format,
+                size=size,
+                stream=False,
+                watermark=watermark,
+            )
+            data = getattr(resp, "data", None)
+            if data and len(data) > 0:
+                urls = [getattr(item, "url", None) for item in data]
+                for u in urls:
+                    if u and u not in results:
+                        results.append(u)
+                        if len(results) >= k:
+                            break
+            if len(results) >= k:
+                break
+        if results:
+            return "\n".join(results[:k])
+        return "Failed to generate image: no image urls"
+    except Exception as e:
+        return f"Failed to generate image: {str(e)}"

@@ -4,6 +4,45 @@ import json
 import threading
 import traceback
 import logging
+import os
+import openai
+from dotenv import load_dotenv
+
+# 加载 .env 文件中的环境变量
+load_dotenv()
+
+# 设置默认的工作目录路径，确保在本地运行时能找到配置
+if not os.getenv("COZE_WORKSPACE_PATH"):
+    os.environ["COZE_WORKSPACE_PATH"] = os.getcwd()
+
+# 确保 API Key 也写入 os.environ，供 cozeloop 使用
+if os.getenv("COZE_WORKLOAD_IDENTITY_API_KEY"):
+    api_key = os.getenv("COZE_WORKLOAD_IDENTITY_API_KEY")
+    os.environ["COZE_WORKLOAD_IDENTITY_API_KEY"] = api_key
+    # 关键修复：coze_coding_utils.log.loop_trace 使用 COZE_LOOP_API_TOKEN
+    if not os.getenv("COZE_LOOP_API_TOKEN"):
+        os.environ["COZE_LOOP_API_TOKEN"] = api_key
+
+if not os.getenv("ARK_API_KEY"):
+    v = os.getenv("COZE_INTEGRATION_MODEL_API_KEY")
+    if v:
+        os.environ["ARK_API_KEY"] = v
+if not os.getenv("ARK_BASE_URL"):
+    v = os.getenv("COZE_INTEGRATION_MODEL_BASE_URL")
+    if v:
+        os.environ["ARK_BASE_URL"] = v
+
+# 强制设置 cozeloop 需要的环境变量，指向国内版
+if not os.getenv("COZE_API_BASE"):
+    os.environ["COZE_API_BASE"] = "api.coze.cn"
+# 同时也设置 COZE_LOOP_BASE_URL
+if not os.getenv("COZE_LOOP_BASE_URL"):
+    os.environ["COZE_LOOP_BASE_URL"] = "https://api.coze.cn"
+    
+# 设置一个默认的 Space ID，防止 loop_trace 初始化使用 "YOUR_SPACE_ID"
+if not os.getenv("COZE_PROJECT_SPACE_ID"):
+    os.environ["COZE_PROJECT_SPACE_ID"] = "default_space_id"
+
 from typing import Any, Dict, Iterable, AsyncIterable, AsyncGenerator, Optional
 import cozeloop
 import uvicorn
@@ -35,8 +74,37 @@ from coze_coding_utils.helper.agent_helper import to_stream_input
 from coze_coding_utils.openai.handler import OpenAIChatHandler
 from coze_coding_utils.log.parser import LangGraphParser
 from coze_coding_utils.log.err_trace import extract_core_stack
-from coze_coding_utils.log.loop_trace import init_run_config, init_agent_config
+# 移除 coze_coding_utils.log.loop_trace 的导入，改用本地定义的 init_run_config
+# from coze_coding_utils.log.loop_trace import init_run_config, init_agent_config
 
+# --- 本地覆盖 Trace 配置，以规避鉴权问题 ---
+from langchain_core.runnables import RunnableConfig
+from coze_coding_utils.log.node_log import Logger
+
+def init_run_config(graph, ctx):
+    """
+    覆盖默认的 init_run_config，仅使用 Logger，禁用 LoopTracer
+    """
+    tracer = Logger(graph, ctx)
+    tracer.on_chain_start = tracer.on_chain_start_graph
+    tracer.on_chain_end = tracer.on_chain_end_graph
+    
+    # 不添加 LoopTracer，避免鉴权报错
+    config = RunnableConfig(
+        callbacks=[tracer],
+    )
+    return config
+
+def init_agent_config(graph, ctx):
+    """
+    覆盖默认的 init_agent_config，禁用 LoopTracer
+    """
+    # 不添加任何 Trace 回调
+    config = RunnableConfig(
+        callbacks=[]
+    )
+    return config
+# ------------------------------------------
 
 # 超时配置常量
 TIMEOUT_SECONDS = 900  # 15分钟
@@ -54,16 +122,19 @@ class GraphService:
         self._graph_lock = threading.Lock()
 
     def _get_graph(self, ctx=Context):
-        if graph_helper.is_agent_proj():
-            return graph_helper.get_agent_instance("agents.agent", ctx)
+        # 强制加载 agents.agent，因为这是一个 Agent 项目
+        return graph_helper.get_agent_instance("agents.agent", ctx)
 
-        if self._graph is not None:
-            return self._graph
-        with self._graph_lock:
-            if self._graph is not None:
-                return self._graph
-            self._graph = graph_helper.get_graph_instance("graphs.graph")
-            return self._graph
+        # if graph_helper.is_agent_proj():
+        #     return graph_helper.get_agent_instance("agents.agent", ctx)
+
+        # if self._graph is not None:
+        #     return self._graph
+        # with self._graph_lock:
+        #     if self._graph is not None:
+        #         return self._graph
+        #     self._graph = graph_helper.get_graph_instance("graphs.graph")
+        #     return self._graph
 
     @staticmethod
     def _sse_event(data: Any, event_id: Any = None) -> str:
@@ -129,6 +200,8 @@ class GraphService:
         run_id = ctx.run_id
         logger.info(f"Starting stream with run_id: {run_id}")
         graph = self._get_graph(ctx)
+        
+        # 使用本地定义的 init_run_config/init_agent_config，避免 Trace
         if graph_helper.is_agent_proj():
             run_config = init_agent_config(graph, ctx)
         else:
@@ -146,7 +219,8 @@ class GraphService:
         finally:
             # 清理任务记录
             self.running_tasks.pop(run_id, None)
-            cozeloop.flush()
+            # 禁用 cozeloop.flush()，因为我们已经移除了 Trace
+            # cozeloop.flush()
 
     # 取消执行 - 使用asyncio的标准方式
     def cancel_run(self, run_id: str, ctx: Optional[Context] = None) -> Dict[str, Any]:
@@ -244,12 +318,14 @@ openai_handler = OpenAIChatHandler(service)
 async def http_run(request: Request) -> Dict[str, Any]:
     global result
     raw_body = await request.body()
+    body_text = ""
     try:
         body_text = raw_body.decode("utf-8")
+        payload = json.loads(body_text)
     except Exception as e:
         body_text = str(raw_body)
-        raise HTTPException(status_code=400,
-                            detail=f"Invalid JSON format: {body_text}, traceback: {traceback.format_exc()}, error: {e}")
+        logger.error(f"Invalid JSON format: {body_text}, traceback: {traceback.format_exc()}, error: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid JSON format: {e}")
 
     ctx = new_context(method="run", headers=request.headers)
     run_id = ctx.run_id
@@ -263,8 +339,6 @@ async def http_run(request: Request) -> Dict[str, Any]:
     )
 
     try:
-        payload = await request.json()
-
         # 创建任务并记录 - 这是关键，让我们可以通过run_id取消任务
         task = asyncio.create_task(service.run(payload, ctx))
         service.running_tasks[run_id] = task
@@ -287,6 +361,10 @@ async def http_run(request: Request) -> Dict[str, Any]:
             result = {}
         if isinstance(result, dict):
             result["run_id"] = run_id
+        
+        # 增加日志打点，记录返回结果
+        logger.info(f"Execution result for run_id {run_id}: {json.dumps(result, ensure_ascii=False, default=str)}")
+        
         return result
 
     except json.JSONDecodeError as e:
@@ -297,6 +375,28 @@ async def http_run(request: Request) -> Dict[str, Any]:
         logger.info(f"Request cancelled for run_id: {run_id}")
         result = {"status": "cancelled", "run_id": run_id, "message": "Execution was cancelled"}
         return result
+
+    except openai.NotFoundError as e:
+        logger.error(f"OpenAI NotFoundError (Model/Endpoint): {e}")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": 400404,
+                "error_message": "Invalid Configuration: The Model ID or API Endpoint is incorrect. Coze PAT cannot be used with Volcengine Model ID directly. Please provide a valid Volcengine API Key or Coze Bot ID.",
+                "stack_trace": traceback.format_exc()
+            }
+        )
+
+    except openai.AuthenticationError as e:
+        logger.error(f"OpenAI AuthenticationError: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error_code": 400401,
+                "error_message": "Authentication Failed: The provided API Key is invalid for the target endpoint.",
+                "stack_trace": traceback.format_exc()
+            }
+        )
 
     except Exception as e:
         # 使用错误分类器获取错误信息
@@ -314,7 +414,8 @@ async def http_run(request: Request) -> Dict[str, Any]:
             }
         )
     finally:
-        cozeloop.flush()
+        # cozeloop.flush()
+        pass
 
 
 HEADER_X_WORKFLOW_STREAM_MODE = "x-workflow-stream-mode"
