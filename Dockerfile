@@ -8,14 +8,15 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# 安装系统依赖（如 git，如果依赖的包需要编译）
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 替换为国内镜像源 (Debian) 并安装系统依赖
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制 requirements.txt 并安装依赖
+# 复制 requirements.txt 并安装依赖 (使用国内 pip 源)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
 
 # 复制项目代码
 COPY . .
