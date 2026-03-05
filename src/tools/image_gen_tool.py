@@ -617,17 +617,21 @@ def generate_marketing_image(
             realism_prompt = ", ".join(random.sample(REALISM_ENHANCERS, 5))
             if mode == "copy":
                 expr = random.choice(EXPRESSIONS)["description"]
-                micro_moves = [
-                    "轻微挥手",
-                    "自然点头",
-                    "微微侧身",
-                    "轻松翘腿",
-                    "抬手整理衣袖",
-                ]
-                micro = random.choice(micro_moves)
+                
+                # 丰富动作库：分为手部、腿部、头部、身体四个维度，确保不改变整体构图和运镜
+                hand_moves = ["单手轻微插兜", "抬手整理发梢", "双手自然下垂", "单手轻触脸颊", "手持随身小物"]
+                leg_moves = ["重心微调", "双脚自然站立", "一脚微微前伸", "双腿交叉站立", "膝盖微屈"]
+                head_moves = ["头部微侧", "下巴微扬", "平视镜头", "眼神略微看向侧方"]
+                body_moves = ["身体正面朝向", "身体微侧15度", "肩膀自然放松"]
+                
+                # 随机组合动作
+                micro = f"{random.choice(hand_moves)}，{random.choice(leg_moves)}，{random.choice(head_moves)}，{random.choice(body_moves)}"
+                
                 per_mode = (
-                    "背景、构图、相机机位与用户图保持一致。人物与用户图为同一人，"
-                    "五官与脸型高度一致，避免AI感。允许细微表情变化与小幅肢体动作变化。"
+                    "【严格运镜约束】镜头焦距、拍摄距离、相机机位、拍摄角度必须与用户原图完全一致。禁止拉近或推远镜头，禁止改变景别（如全身变半身）。"
+                    "【背景与构图】背景环境、光影方向、画面构图结构保持不变。"
+                    "【人物一致性】人物与用户图为同一人，五官与脸型高度一致。"
+                    "【姿态丰富性】在保持原图整体站位和景别不变的前提下，允许人物进行自然的肢体微调（如手部、腿部、头部动作变化），增加生动感。"
                 )
                 per_prompt = f"{base_prompt}. {per_mode} {expr}，{micro}。{realism_prompt} " + " ".join(product_constraints)
                 images = [u for u in base_images if u]
