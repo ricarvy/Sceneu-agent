@@ -5,6 +5,7 @@ import threading
 import traceback
 import logging
 import os
+import re
 import openai
 from dotenv import load_dotenv
 
@@ -367,6 +368,25 @@ async def http_run(request: Request) -> Dict[str, Any]:
             result = {}
         if isinstance(result, dict):
             result["run_id"] = run_id
+            
+            # Extract generated image URLs from the last AI message
+            try:
+                if "messages" in result and result["messages"]:
+                    last_msg = result["messages"][-1]
+                    # Handle both object and dict (though usually object in local run)
+                    content = getattr(last_msg, "content", None)
+                    if content is None and isinstance(last_msg, dict):
+                        content = last_msg.get("content")
+                    
+                    if content and isinstance(content, str):
+                        # Extract markdown image links: ![](url)
+                        # Also extract [Order Screenshot]: url patterns if any (though prompt says markdown)
+                        # Regex for ![](url)
+                        urls = re.findall(r'!\[.*?\]\((.*?)\)', content)
+                        if urls:
+                            result["generated_image_urls"] = urls
+            except Exception as e:
+                logger.warning(f"Failed to extract image URLs: {e}")
         
         # 增加日志打点，记录返回结果
         logger.info(f"Execution result for run_id {run_id}: {json.dumps(result, ensure_ascii=False, default=str)}")
