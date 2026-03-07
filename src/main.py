@@ -49,6 +49,7 @@ import uvicorn
 import time
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
@@ -309,6 +310,11 @@ class GraphService:
 
 service = GraphService()
 app = FastAPI()
+
+# Mount static files directory
+if not os.path.exists("static"):
+    os.makedirs("static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # OpenAI 兼容接口处理器
 openai_handler = OpenAIChatHandler(service)

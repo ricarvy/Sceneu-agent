@@ -12,6 +12,10 @@
 import os
 import random
 import re
+import uuid
+import requests
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
 from langchain.tools import tool
 from typing import Optional, Tuple
 
@@ -22,6 +26,10 @@ REALISM_ENHANCERS = [
     "像真人照片拍摄", "真实质感", "自然肤色", "轻度后期", "保留皮肤纹理",
     "生活化", "自然过渡", "真实细节", "生活气息", "像专业摄影师拍摄",
     "避免过度AI化", "避免过度美化", "避免过度修饰", "保持真实感",
+    "模拟真实相机光感", "自然环境光反射", "真实物体材质感",
+    "胶片颗粒感", "自然瑕疵", "真实毛孔", "非完美打光", "raw photo", "cinematic lighting",
+    "避免塑料质感", "避免油画感", "避免过度磨皮", "避免假脸",
+    "真实衣物褶皱", "自然发丝乱序",
     
     # 人物互动相关
     "人物自然使用商品", "手部自然接触", "眼神自然交流", "表情与使用场景自然协调",
@@ -33,6 +41,7 @@ REALISM_ENHANCERS = [
     # 降低AI感
     "皮肤有自然纹理和毛孔", "面部有自然的阴影和细节", "头发有自然的质感",
     "整体画面真实自然，不虚假", "色彩真实，不过度饱和", "光影真实，不过度夸张",
+    "避免油腻感", "避免塑料感", "避免过度锐化",
 ]
 
 # 背景融合关键词库（减少剥离感）
@@ -180,16 +189,6 @@ EXPRESSIONS = [
         "unique_marker": "gentle_friendly"
     },
     {
-        "expression": "认真思考",
-        "description": "认真思考的表情，眼神思考，眉毛自然皱起，表情认真有深度，像在认真考虑",
-        "unique_marker": "thoughtful_serious"
-    },
-    {
-        "expression": "平静自然",
-        "description": "平静自然的表情，眼神平和，嘴角自然，表情平静放松，像在日常状态",
-        "unique_marker": "calm_natural"
-    },
-    {
         "expression": "欣赏赞赏",
         "description": "欣赏的表情，眼神赞赏，嘴角自然上扬约15度，表情欣赏认可，像在欣赏美好的事物",
         "unique_marker": "appreciative_approving"
@@ -312,6 +311,114 @@ PRODUCT_CATEGORY_PATTERNS: list[Tuple[str, str]] = [
     ("耳环|earring", "耳环"),
     ("口红|lipstick", "口红"),
 ]
+
+# Order Screenshot Configuration
+TEMPLATE_PATH = os.path.join(os.getcwd(), "template", "image.png")
+GENERATED_DIR = os.path.join(os.getcwd(), "static", "generate")
+
+def get_font(size=20):
+    """Attempt to load a font that supports Chinese characters."""
+    font_paths = [
+        "/System/Library/Fonts/PingFang.ttc",  # macOS
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # Linux (Debian/Ubuntu)
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "arial.ttf"
+    ]
+    for path in font_paths:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
+
+def generate_order_card(product_title: str, shop_name: str, price: str, product_image_url: str) -> Optional[str]:
+    """
+    Generate an order screenshot card based on the template.
+    Returns the relative URL path of the generated image.
+    """
+    try:
+        if not os.path.exists(TEMPLATE_PATH):
+            print(f"Template not found: {TEMPLATE_PATH}")
+            return None
+            
+        # Clean the template first (remove colored boxes)
+        template = Image.open(TEMPLATE_PATH).convert("RGBA")
+        draw_clean = ImageDraw.Draw(template)
+        
+        # Fill White to clear colored boxes
+        # Yellow (Product): (16, 65, 171, 214)
+        draw_clean.rectangle((16, 65, 171, 214), fill=(255, 255, 255, 255))
+        # Green (Shop): (77, 12, 293, 48)
+        draw_clean.rectangle((77, 12, 293, 48), fill=(255, 255, 255, 255))
+        # Red (Title): (178, 58, 496, 99)
+        draw_clean.rectangle((178, 58, 496, 99), fill=(255, 255, 255, 255))
+        # Purple (Prices): (535, 65, 564, 93) and (530, 223, 559, 252)
+        draw_clean.rectangle((535, 65, 564, 93), fill=(255, 255, 255, 255))
+        draw_clean.rectangle((530, 223, 559, 252), fill=(255, 255, 255, 255))
+
+        # 1. Product Image
+        try:
+            resp = requests.get(product_image_url, timeout=10)
+            resp.raise_for_status()
+            product_img = Image.open(BytesIO(resp.content)).convert("RGBA")
+            # Resize to fit yellow box (155x149)
+            product_img = product_img.resize((155, 149), Image.Resampling.LANCZOS)
+            template.paste(product_img, (16, 65))
+        except Exception as e:
+            print(f"Failed to download product image: {e}")
+            # Optional: paste a placeholder or leave white
+
+        # Draw Text
+        draw = ImageDraw.Draw(template)
+        
+        # 2. Shop Name (Green Box: 77, 12, 293, 48)
+        shop_font = get_font(20)
+        # Add slight padding
+        draw.text((80, 18), shop_name, font=shop_font, fill=(0, 0, 0, 255))
+        
+        # 3. Product Title (Red Box: 178, 58, 496, 99)
+        title_font = get_font(18)
+        
+        # Truncate logic
+        max_width = 496 - 178
+        
+        # Simple loop to truncate
+        display_title = product_title
+        while display_title:
+            bbox = draw.textbbox((0, 0), display_title + "...", font=title_font)
+            text_width = bbox[2] - bbox[0]
+            if text_width <= max_width:
+                break
+            display_title = display_title[:-1]
+            
+        if len(display_title) < len(product_title):
+            display_title += "..."
+            
+        draw.text((178, 60), display_title, font=title_font, fill=(0, 0, 0, 255))
+        
+        # 4. Price (Purple Boxes)
+        price_font = get_font(18)
+        # Unit Price (Top Right)
+        draw.text((535, 65), price, font=price_font, fill=(0, 0, 0, 255))
+        # Total Price (Bottom Right)
+        draw.text((530, 225), price, font=price_font, fill=(0, 0, 0, 255))
+        
+        # Save result
+        if not os.path.exists(GENERATED_DIR):
+            os.makedirs(GENERATED_DIR)
+            
+        filename = f"order_{uuid.uuid4().hex}.png"
+        save_path = os.path.join(GENERATED_DIR, filename)
+        template.save(save_path, "PNG")
+        
+        # Return relative URL
+        return f"/static/generate/{filename}"
+        
+    except Exception as e:
+        print(f"Error generating order card: {e}")
+        return None
 
 def infer_product_category(title: Optional[str], image_url: Optional[str]) -> Optional[str]:
     candidates: list[str] = []
@@ -480,16 +587,22 @@ def generate_marketing_image(
     product_photo_url: str,
     prompt: str,
     product_title: str = None,
+    shop_name: str = None,
+    price: str = None,
     scene_ref_url: str = None,
     mode: str = "inspire"
 ) -> str:
     """
     Generate a social media marketing image based on user photo and product photo.
+    Also generates an order screenshot if shop_name and price are provided.
     
     Args:
         user_photo_url: The URL of the user's photo.
         product_photo_url: The URL of the product photo (supports multiple products).
         prompt: The prompt describing the style and atmosphere.
+        product_title: The title of the product.
+        shop_name: (Optional) The name of the shop for order screenshot generation.
+        price: (Optional) The price of the product for order screenshot generation.
         scene_ref_url: (Optional) The URL of a scene reference image.
         mode: (Optional) The generation mode. "copy" means maintaining the pose and scene of the user photo, only replacing the face and product. "inspire" means the AI is free to be creative (default).
     """
@@ -614,9 +727,20 @@ def generate_marketing_image(
 
         results: list[str] = []
         for _ in range(k):
-            realism_prompt = ", ".join(random.sample(REALISM_ENHANCERS, 5))
+            # 增强真实感提示词
+            realism_prompt = ", ".join(random.sample(REALISM_ENHANCERS, 6))
+            
             if mode == "copy":
-                expr = random.choice(EXPRESSIONS)["description"]
+                # 在 copy 模式下，强制使用积极/中性偏积极的表情，避免愁眉苦脸
+                # 移除 "认真思考" 和 "平静自然" (容易被理解为冷漠)
+                # 仅保留明确积极的表情
+                positive_expressions = [e for e in EXPRESSIONS if e['unique_marker'] not in ['thoughtful_serious', 'calm_natural', 'focused_serious']]
+                # 如果过滤后为空（理论上不会），则使用全部
+                if not positive_expressions:
+                    positive_expressions = EXPRESSIONS
+                
+                selected_expr = random.choice(positive_expressions)
+                expr = f"{selected_expr['description']}，表情必须与原图人物气质相符且保持积极向上的状态"
                 
                 # 丰富动作库：分为手部、腿部、头部、身体四个维度，确保不改变整体构图和运镜
                 hand_moves = ["单手轻微插兜", "抬手整理发梢", "双手自然下垂", "单手轻触脸颊", "手持随身小物"]
@@ -630,13 +754,16 @@ def generate_marketing_image(
                 per_mode = (
                     "【严格运镜约束】镜头焦距、拍摄距离、相机机位、拍摄角度必须与用户原图完全一致。禁止拉近或推远镜头，禁止改变景别（如全身变半身）。"
                     "【背景与构图】背景环境、光影方向、画面构图结构保持不变。"
-                    "【人物一致性】人物与用户图为同一人，五官与脸型高度一致。"
+                    "【人物一致性】人物与用户图为同一人，五官与脸型高度一致。**人物表情需自然积极，严禁出现愁眉苦脸、冷漠或痛苦的表情**。"
                     "【姿态丰富性】在保持原图整体站位和景别不变的前提下，允许人物进行自然的肢体微调（如手部、腿部、头部动作变化），增加生动感。"
+                    "【光影与细节】光影需完全模拟真实环境光，皮肤纹理真实，避免过度磨皮或油腻感。"
+                    "【构图约束】保持人物全身或原有构图完整，适当拉远镜头，确保脚部完整显示，不要截断身体部位。"
                 )
                 per_prompt = f"{base_prompt}. {per_mode} {expr}，{micro}。{realism_prompt} " + " ".join(product_constraints)
                 images = [u for u in base_images if u]
             else:
-                per_prompt = f"{base_prompt}. {mode_prompt} {realism_prompt} " + " ".join(product_constraints)
+                # Inspire 模式：放宽限制，但保持积极
+                per_prompt = f"{base_prompt}. {mode_prompt} {realism_prompt}，人物姿态自然舒展，表情生动积极，避免僵硬。镜头距离适中，确保人物完整（包含脚部），不要过度特写。 " + " ".join(product_constraints)
                 images = [u for u in base_images if u]
 
             from volcenginesdkarkruntime.types.images.images import SequentialImageGenerationOptions
@@ -662,8 +789,63 @@ def generate_marketing_image(
                             break
             if len(results) >= k:
                 break
+        
+        # Generate Order Screenshot if info is available
+        order_card_urls = []
+        if shop_name and price and product_title:
+            # Parse inputs (support multiple items)
+            titles = [t.strip() for t in re.split(r'[,，]', product_title) if t.strip()]
+            shops = [s.strip() for s in re.split(r'[,，]', shop_name) if s.strip()]
+            prices = [p.strip() for p in re.split(r'[,，]', price) if p.strip()]
+            
+            # Use extract_urls helper to get all product images
+            # Assuming product_urls matches titles in order
+            prod_imgs = product_urls
+            
+            # Logic to handle mismatched lengths:
+            # If only 1 shop/price provided but multiple items, reuse for all.
+            # If counts differ otherwise, use min length or default.
+            
+            count = len(titles)
+            
+            for i in range(count):
+                curr_title = titles[i]
+                
+                # Shop logic
+                if len(shops) == 1:
+                    curr_shop = shops[0]
+                elif i < len(shops):
+                    curr_shop = shops[i]
+                else:
+                    curr_shop = shops[-1] # Fallback to last
+                    
+                # Price logic
+                if len(prices) == 1:
+                    curr_price = prices[0]
+                elif i < len(prices):
+                    curr_price = prices[i]
+                else:
+                    curr_price = prices[-1] # Fallback to last
+                    
+                # Image logic
+                if i < len(prod_imgs):
+                    curr_img = prod_imgs[i]
+                elif prod_imgs:
+                    curr_img = prod_imgs[0] # Fallback to first
+                else:
+                    curr_img = product_photo_url # Fallback to raw string
+                
+                relative_url = generate_order_card(curr_title, curr_shop, curr_price, curr_img)
+                if relative_url:
+                    order_card_urls.append(relative_url)
+
         if results:
-            return "\n".join(results[:k])
+            final_output = "\n".join(results[:k])
+            if order_card_urls:
+                for idx, url in enumerate(order_card_urls):
+                    final_output += f"\n[Order Screenshot {idx+1}]: {url}"
+            return final_output
+            
         return "Failed to generate image: no image urls"
     except Exception as e:
         return f"Failed to generate image: {str(e)}"
