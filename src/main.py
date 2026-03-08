@@ -347,6 +347,19 @@ async def http_run(request: Request) -> Dict[str, Any]:
 
     try:
         # 创建任务并记录 - 这是关键，让我们可以通过run_id取消任务
+        
+        # Inject seed_mode into messages if present in payload
+        if isinstance(payload, dict) and "seed_mode" in payload:
+            seed_mode = str(payload["seed_mode"]).lower()
+            # Use a User message at the end to ensure LLM attends to it
+            # and to override previous context if any.
+            system_msg = {
+                "role": "user", 
+                "content": f"【系统配置】当前任务配置：seed_mode='{seed_mode}'。如果为'true'，请务必生成订单截图（提取店铺名和价格）。"
+            }
+            if "messages" in payload and isinstance(payload["messages"], list):
+                payload["messages"].append(system_msg)
+                
         task = asyncio.create_task(service.run(payload, ctx))
         service.running_tasks[run_id] = task
 
@@ -383,8 +396,22 @@ async def http_run(request: Request) -> Dict[str, Any]:
                         # Also extract [Order Screenshot]: url patterns if any (though prompt says markdown)
                         # Regex for ![](url)
                         urls = re.findall(r'!\[.*?\]\((.*?)\)', content)
+                        
+                        image_urls = []
+                        order_urls = []
+                        
                         if urls:
-                            result["generated_image_urls"] = urls
+                            for u in urls:
+                                # Check if it's an order screenshot (usually contains "order_" in filename)
+                                if "order_" in u or "/static/generate/" in u:
+                                    order_urls.append(u)
+                                else:
+                                    image_urls.append(u)
+                                    
+                        if image_urls:
+                            result["generated_image_urls"] = image_urls
+                        if order_urls:
+                            result["generated_order_urls"] = order_urls
             except Exception as e:
                 logger.warning(f"Failed to extract image URLs: {e}")
         

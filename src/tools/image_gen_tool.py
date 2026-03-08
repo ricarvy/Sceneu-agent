@@ -320,6 +320,9 @@ def get_font(size=20):
     """Attempt to load a font that supports Chinese characters."""
     font_paths = [
         "/System/Library/Fonts/PingFang.ttc",  # macOS
+        "/System/Library/Fonts/STHeiti Light.ttc",  # macOS (Heiti)
+        "/System/Library/Fonts/STHeiti Medium.ttc",  # macOS (Heiti)
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",  # macOS
         "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # Linux (Debian/Ubuntu)
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/System/Library/Fonts/STHeiti Light.ttc",
@@ -400,10 +403,10 @@ def generate_order_card(product_title: str, shop_name: str, price: str, product_
         
         # 4. Price (Purple Boxes)
         price_font = get_font(18)
-        # Unit Price (Top Right)
-        draw.text((535, 65), price, font=price_font, fill=(0, 0, 0, 255))
-        # Total Price (Bottom Right)
-        draw.text((530, 225), price, font=price_font, fill=(0, 0, 0, 255))
+        # Unit Price (Top Right) - Adjusted y from 65 to 70
+        draw.text((535, 70), price, font=price_font, fill=(0, 0, 0, 255))
+        # Total Price (Bottom Right) - Adjusted y from 225 to 230
+        draw.text((530, 230), price, font=price_font, fill=(0, 0, 0, 255))
         
         # Save result
         if not os.path.exists(GENERATED_DIR):
@@ -590,11 +593,12 @@ def generate_marketing_image(
     shop_name: str = None,
     price: str = None,
     scene_ref_url: str = None,
-    mode: str = "inspire"
+    mode: str = "inspire",
+    seed_mode: str = "false"
 ) -> str:
     """
     Generate a social media marketing image based on user photo and product photo.
-    Also generates an order screenshot if shop_name and price are provided.
+    Also generates an order screenshot if shop_name and price are provided and seed_mode is "true".
     
     Args:
         user_photo_url: The URL of the user's photo.
@@ -605,6 +609,7 @@ def generate_marketing_image(
         price: (Optional) The price of the product for order screenshot generation.
         scene_ref_url: (Optional) The URL of a scene reference image.
         mode: (Optional) The generation mode. "copy" means maintaining the pose and scene of the user photo, only replacing the face and product. "inspire" means the AI is free to be creative (default).
+        seed_mode: (Optional) Whether to enable seeding mode (generate order screenshot). "true" or "false".
     """
     base_prompt = f"{prompt}, 杰作, 8k分辨率, 极度详细, 专业摄影, 商业级光影"
 
@@ -715,6 +720,9 @@ def generate_marketing_image(
     except Exception as e:
         return f"Failed to generate image: volcenginesdkarkruntime not installed ({str(e)})"
 
+    main_gen_result = None
+    main_gen_error = None
+
     try:
         client = Ark(base_url=base_url, api_key=api_key)
         product_urls: list[str] = extract_urls(product_photo_url)
@@ -790,9 +798,20 @@ def generate_marketing_image(
             if len(results) >= k:
                 break
         
-        # Generate Order Screenshot if info is available
-        order_card_urls = []
-        if shop_name and price and product_title:
+        if results:
+            main_gen_result = "\n".join(results[:k])
+        else:
+            main_gen_error = "Failed to generate image: no image urls"
+
+    except Exception as e:
+        main_gen_error = f"Failed to generate image: {str(e)}"
+    
+    # Generate Order Screenshot if info is available AND seed_mode is true
+    # We do this regardless of main generation success/failure to support testing
+    # or partial success scenarios.
+    order_card_urls = []
+    if seed_mode.lower() == "true" and shop_name and price and product_title:
+        try:
             # Parse inputs (support multiple items)
             titles = [t.strip() for t in re.split(r'[,，]', product_title) if t.strip()]
             shops = [s.strip() for s in re.split(r'[,，]', shop_name) if s.strip()]
@@ -800,11 +819,7 @@ def generate_marketing_image(
             
             # Use extract_urls helper to get all product images
             # Assuming product_urls matches titles in order
-            prod_imgs = product_urls
-            
-            # Logic to handle mismatched lengths:
-            # If only 1 shop/price provided but multiple items, reuse for all.
-            # If counts differ otherwise, use min length or default.
+            prod_imgs = extract_urls(product_photo_url)
             
             count = len(titles)
             
@@ -838,14 +853,18 @@ def generate_marketing_image(
                 relative_url = generate_order_card(curr_title, curr_shop, curr_price, curr_img)
                 if relative_url:
                     order_card_urls.append(relative_url)
+        except Exception as e:
+            print(f"Order card generation failed: {e}")
 
-        if results:
-            final_output = "\n".join(results[:k])
-            if order_card_urls:
-                for idx, url in enumerate(order_card_urls):
-                    final_output += f"\n[Order Screenshot {idx+1}]: {url}"
-            return final_output
+    # Combine results
+    final_output = ""
+    if main_gen_result:
+        final_output = main_gen_result
+    elif main_gen_error:
+        final_output = main_gen_error
+    
+    if order_card_urls:
+        for idx, url in enumerate(order_card_urls):
+            final_output += f"\n[Order Screenshot {idx+1}]: {url}"
             
-        return "Failed to generate image: no image urls"
-    except Exception as e:
-        return f"Failed to generate image: {str(e)}"
+    return final_output
